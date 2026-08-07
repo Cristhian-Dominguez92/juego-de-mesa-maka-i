@@ -1,0 +1,8 @@
+# Dependencias de ejecución del juego.
+#
+# Requiere Python >=3.10 y <3.14 (flet 0.28.3 no publica wheels para 3.14).
+#
+# La API de Flet cambió de forma incompatible a partir de 0.80 (línea 1.0):
+# `ft.app(target=...)` fue reemplazado por `ft.run(...)`. Este proyecto usa la
+# API 0.x, por lo que la versión queda fijada. No subir sin migrar el código.
+flet==0.28.3

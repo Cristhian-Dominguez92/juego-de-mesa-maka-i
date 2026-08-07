@@ -1,34 +1,67 @@
-name: Build Maka-i APK
+name: Build Maka'i APK
+
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancela builds anteriores del mismo branch cuando llega un push nuevo.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
+          cache: 'pip'
 
-      - name: Install Flet and Build Tools
-        run: |
-          pip install flet[build]
+      - name: Install ruff
+        run: pip install ruff==0.16.1
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Format check
+        run: ruff format --check .
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # flet 0.28.3 no soporta Python 3.14.
+          python-version: '3.12'
+          cache: 'pip'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
+
+      - name: Install Flet build tools
+        run: pip install "flet[all]==0.28.3"
 
       - name: Build APK
-        run: |
-          flet build apk
+        run: flet build apk --verbose
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: maka-i-apk
+          name: makai-apk-${{ github.sha }}
           path: build/apk/*.apk
+          if-no-files-found: error
+          retention-days: 30

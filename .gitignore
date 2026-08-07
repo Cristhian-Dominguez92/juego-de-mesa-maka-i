@@ -1,5 +1,25 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+.venv/
+venv/
+
+# Flet / Flutter build
+build/
+.flet/
+
+# Assets locales fuera de control de versiones.
+# Ver CREDITS.md: acá vive el material sin licencia verificada.
+_local/
+
+# Herramientas
+.ruff_cache/
+.pytest_cache/
+
+# SO / editores
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/

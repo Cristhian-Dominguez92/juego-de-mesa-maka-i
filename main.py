@@ -1,107 +1,125 @@
-import flet as ft
-import random
 import asyncio
 import os
-import time
-import subprocess
-import platform
+import random
 
+import flet as ft
+
+# pygame solo existe en escritorio: en Android no hay wheel disponible, así que
+# el juego debe seguir funcionando (mudo) sin él. Migrar a ft.Audio en la Fase 3.
 try:
     import pygame
+
     pygame.mixer.init()
 except Exception:
     pygame = None
+
+# --- Rutas de assets ---
+# Las imágenes se resuelven contra assets_dir de Flet (ver ft.app al final), por
+# eso van sin el prefijo "assets/". pygame en cambio lee del sistema de archivos
+# relativo al directorio de trabajo, y necesita la ruta completa.
+ASSETS_DIR = "assets"
+RECURSOS = "Recursos"
+DORSO = f"{RECURSOS}/dorso.jpeg"
+
+# Música de fondo con licencia libre. Ver CREDITS.md: el archivo no viene en el
+# repositorio y hay que aportarlo. El juego funciona sin él.
+MUSICA_FONDO = os.path.join(ASSETS_DIR, RECURSOS, "background_music.mp3")
+SONIDO_VICTORIA = os.path.join(ASSETS_DIR, RECURSOS, "victoria.mp3")
 
 # --- Lógica de Juego ---
 PALOS = ['Oros', 'Copas', 'Espadas', 'Bastos']
 VALORES = ['1', '2', '3', '4', '5', '6', '7', '10', '11', '12']
 
+
 class Carta:
     def __init__(self, palo, valor):
         self.palo = palo
         self.valor = valor
-    
+
     def get_path(self):
         p = {'Oros': 'oro', 'Copas': 'copa', 'Espadas': 'espada', 'Bastos': 'basto'}
-        return f"Recursos/{self.valor.lower()}_{p[self.palo]}.jpeg"
+        return f"{RECURSOS}/{self.valor}_{p[self.palo]}.jpeg"
+
 
 def calcular_puntaje(mano):
     figs = ['10', '11', '12']
     c_figs = sum(1 for c in mano if c.valor in figs)
-    if len(mano) == 3 and c_figs == 3: 
+    if len(mano) == 3 and c_figs == 3:
         return 8.5
     total = sum(10 if c.valor in figs else int(c.valor) for c in mano)
     return total % 10 if total >= 10 else total
+
 
 # --- Aplicación Principal ---
 async def main(page: ft.Page):
     page.title = "Maka-i Paraguayo"
     page.bgcolor = "#1a4a1a"
     page.theme_mode = ft.ThemeMode.DARK
-    
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+
     # Variables de control de audio
     audio_bg_playing = False
-    
+
     # Iniciar música de fondo
     def play_background_music():
         nonlocal audio_bg_playing
         if pygame is None or audio_bg_playing:
             return
         try:
-            bg_path = os.path.join("assets", "Recursos", "Arrocha Rave - Tnga (00).mp3")
-            if os.path.exists(bg_path):
-                pygame.mixer.music.load(bg_path)
+            if os.path.exists(MUSICA_FONDO):
+                pygame.mixer.music.load(MUSICA_FONDO)
                 pygame.mixer.music.play(-1)
                 pygame.mixer.music.set_volume(0.3)
                 audio_bg_playing = True
                 print("🎵 Música de fondo reproduciendo...")
         except Exception as e:
             print(f"Error con audio de fondo: {e}")
-    
+
     # Estado inicial
     st = {"mazo": [], "m_u": [], "m_p": [], "p_u": 0, "p_p": 0}
 
     # Función para mostrar pantalla de inicio
     async def mostrar_inicio(e=None):
         page.clean()
-        
+
         txt_welcome = ft.Text(
             "Bienvenidos al tradicional juego de mesa",
             size=28,
             weight=ft.FontWeight.BOLD,
             color="gold",
-            text_align=ft.TextAlign.CENTER
+            text_align=ft.TextAlign.CENTER,
         )
         txt_game_name = ft.Text(
             "MAKA'I",
             size=60,
             weight=ft.FontWeight.BOLD,
             color="orange",
-            text_align=ft.TextAlign.CENTER
+            text_align=ft.TextAlign.CENTER,
         )
         txt_subtitle = ft.Text(
             "¡El juego de cartas más emocionante!",
             size=18,
             color="yellow",
             text_align=ft.TextAlign.CENTER,
-            italic=True
+            italic=True,
         )
-        
+
         btn_start = ft.Button(
             "COMENZAR JUEGO",
             on_click=mostrar_juego,
             bgcolor="orange800",
             color="white",
             width=300,
-            height=50
+            height=50,
         )
-        
+
         welcome_col = ft.Column(
             [txt_welcome, txt_game_name, txt_subtitle, ft.Divider(height=40), btn_start],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=20
+            vertical_alignment=ft.MainAxisAlignment.CENTER,
+            spacing=20,
         )
-        
+
         page.add(welcome_col)
         page.update()
 
@@ -109,7 +127,7 @@ async def main(page: ft.Page):
     async def mostrar_juego(e=None):
         page.clean()
         play_background_music()
-        
+
         txt_status = ft.Text("¡JAHUGA Maka-'I!", size=30, weight=ft.FontWeight.BOLD)
         txt_score = ft.Text("Usuario 0 - 0 PC", size=20, color="yellow")
         row_pc = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=15)
@@ -152,9 +170,8 @@ async def main(page: ft.Page):
             if pygame is None:
                 return
             try:
-                victory_path = os.path.join("assets", "Recursos", "victoria.mp3")
-                if os.path.exists(victory_path):
-                    pygame.mixer.Sound(victory_path).play()
+                if os.path.exists(SONIDO_VICTORIA):
+                    pygame.mixer.Sound(SONIDO_VICTORIA).play()
                     await asyncio.sleep(2)
             except Exception:
                 pass
@@ -179,12 +196,12 @@ async def main(page: ft.Page):
             if visible and carta is not None:
                 img_path = carta.get_path()
             else:
-                img_path = "Recursos/dorso.jpeg"
+                img_path = DORSO
             return ft.Container(
                 content=ft.Image(src=img_path, width=100, height=150),
-                animate_scale=600, 
-                scale=1, 
-                border_radius=10
+                animate_scale=600,
+                scale=1,
+                border_radius=10,
             )
 
         async def actualizar_tablero(revelar_pc=False):
@@ -207,7 +224,7 @@ async def main(page: ft.Page):
                     audio_bg_playing = False
                 except Exception:
                     pass
-            
+
             st["mazo"] = [Carta(p, v) for p in PALOS for v in VALORES]
             random.shuffle(st["mazo"])
             st["m_u"] = [st["mazo"].pop(), st["mazo"].pop()]
@@ -218,7 +235,8 @@ async def main(page: ft.Page):
 
         async def pedir(e):
             st["m_u"].append(st["mazo"].pop())
-            if len(st["m_u"]) >= 3: btn_p.disabled = True
+            if len(st["m_u"]) >= 3:
+                btn_p.disabled = True
             txt_status.value = f"Puntaje: {calcular_puntaje(st['m_u'])}"
             await actualizar_tablero()
 
@@ -229,15 +247,18 @@ async def main(page: ft.Page):
                 page.update()
                 await asyncio.sleep(0.7)
                 st["m_p"].append(st["mazo"].pop())
-            
+
             pu, pp = calcular_puntaje(st["m_u"]), calcular_puntaje(st["m_p"])
             if pu > pp:
-                res = "¡GANASTE ESTA RONDA! 🏆"; st["p_u"] += 1
+                res = "¡GANASTE ESTA RONDA! 🏆"
+                st["p_u"] += 1
             elif pp > pu:
-                res = "Gana la PC 🤖"; st["p_p"] += 1
+                res = "Gana la PC 🤖"
+                st["p_p"] += 1
             else:
-                res = "Empate (Banca)"; st["p_p"] += 1
-                
+                res = "Empate (Banca)"
+                st["p_p"] += 1
+
             txt_status.value = res
             txt_score.value = f"Usuario {st['p_u']} - {st['p_p']} PC"
             await actualizar_tablero(revelar_pc=True)
@@ -246,7 +267,7 @@ async def main(page: ft.Page):
                 await asyncio.gather(_sonido_victoria(), _animar_victoria())
 
             await asyncio.sleep(1.5)
-            
+
             if st["p_u"] >= 10:
                 txt_status.value = "🏆 ¡FELICIDADES, ACABAS DE GANAR LA PARTIDA! 🏆"
                 txt_status.color = "gold"
@@ -292,6 +313,7 @@ async def main(page: ft.Page):
     # Mostrar pantalla de inicio al cargar
     await mostrar_inicio()
 
+
 # Ejecución
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets")
+    ft.app(target=main, assets_dir=ASSETS_DIR)

@@ -1,41 +1,45 @@
 """
 Genera archivos de audio WAV para el juego Maka-i
 """
-import wave
-import struct
+
 import math
+import os
+import struct
+import wave
+
 
 def generar_tonos(frecuencias, duracion_ms, sample_rate=22050):
     """Genera onda de audio sinusoidal para frecuencias dadas."""
     num_samples = int(sample_rate * duracion_ms / 1000)
     frames = []
-    
+
     for i in range(num_samples):
         sample = 0
         t = i / sample_rate
         for freq in frecuencias:
             sample += math.sin(2 * math.pi * freq * t)
-        
+
         # Normalizar y convertir a int16
         if len(frecuencias) > 0:
             sample = int((sample / len(frecuencias)) * 30000)
         else:
             sample = 0  # Silencio
         frames.append(struct.pack('<h', sample))
-    
+
     return b''.join(frames)
+
 
 def guardar_wav(filename, audio_data, sample_rate=22050):
     """Guarda datos de audio en archivo WAV."""
     with wave.open(filename, 'wb') as wav_file:
         wav_file.setnchannels(1)  # Mono
-        wav_file.setsampwidth(2)   # 16-bit
+        wav_file.setsampwidth(2)  # 16-bit
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(audio_data)
     print(f"✓ {filename}")
 
+
 # Crear carpeta si no existe
-import os
 os.makedirs("assets/Recursos", exist_ok=True)
 
 # 1. Música de fondo (loop suave, 8 segundos)
