@@ -6,10 +6,12 @@ from makai.core.cartas import VALORES, Carta, Palo, crear_mazo
 from makai.core.reglas import (
     PUNTAJE_TRES_FIGURAS,
     Resultado,
+    Rol,
     calcular_puntaje,
     es_tres_figuras,
+    ganador_de_ronda,
     resolver,
-    suma_punto_el_jugador,
+    siguiente_banca,
 )
 
 
@@ -56,6 +58,7 @@ def test_dos_figuras_no_son_mano_especial():
 
 
 def test_tres_figuras_gana_a_cualquier_8_pero_pierde_con_9():
+    """Regla confirmada: 8.5 se ubica entre el 8 y el 9."""
     tres_figuras = calcular_puntaje(mano(10, 11, 12))
     assert tres_figuras > calcular_puntaje(mano(4, 4))  # 8
     assert tres_figuras < calcular_puntaje(mano(4, 5))  # 9
@@ -94,22 +97,21 @@ def test_el_palo_no_afecta_el_puntaje():
     assert calcular_puntaje(a) == calcular_puntaje(b)
 
 
-# --- Resolución ---------------------------------------------------------------
+def test_todas_las_cartas_del_mazo_producen_puntaje_valido():
+    for carta in crear_mazo():
+        assert 0 <= calcular_puntaje([carta]) <= 9
+
+
+# --- Comparación de manos -----------------------------------------------------
 
 
 def test_gana_el_puntaje_mas_alto():
     assert resolver(mano(4, 5), mano(1, 2)) is Resultado.GANA_JUGADOR
-    assert resolver(mano(1, 2), mano(4, 5)) is Resultado.GANA_BANCA
+    assert resolver(mano(1, 2), mano(4, 5)) is Resultado.GANA_PC
 
 
 def test_mismo_puntaje_es_empate():
     assert resolver(mano(4, 5), mano(7, 2)) is Resultado.EMPATE
-
-
-def test_el_empate_favorece_a_la_banca():
-    assert not suma_punto_el_jugador(Resultado.EMPATE)
-    assert not suma_punto_el_jugador(Resultado.GANA_BANCA)
-    assert suma_punto_el_jugador(Resultado.GANA_JUGADOR)
 
 
 def test_tres_figuras_le_gana_a_ocho():
@@ -117,9 +119,57 @@ def test_tres_figuras_le_gana_a_ocho():
 
 
 def test_nueve_le_gana_a_tres_figuras():
-    assert resolver(mano(10, 11, 12), mano(4, 5)) is Resultado.GANA_BANCA
+    assert resolver(mano(10, 11, 12), mano(4, 5)) is Resultado.GANA_PC
 
 
-def test_todas_las_cartas_del_mazo_producen_puntaje_valido():
-    for carta in crear_mazo():
-        assert 0 <= calcular_puntaje([carta]) <= 9
+# --- El empate favorece a la banca --------------------------------------------
+
+
+@pytest.mark.parametrize("banca", list(Rol))
+def test_el_empate_lo_gana_quien_tenga_la_banca(banca):
+    assert ganador_de_ronda(Resultado.EMPATE, banca) is banca
+
+
+@pytest.mark.parametrize("banca", list(Rol))
+def test_una_victoria_limpia_no_depende_de_la_banca(banca):
+    assert ganador_de_ronda(Resultado.GANA_JUGADOR, banca) is Rol.JUGADOR
+    assert ganador_de_ronda(Resultado.GANA_PC, banca) is Rol.PC
+
+
+# --- Rotación de la banca -----------------------------------------------------
+
+
+@pytest.mark.parametrize("ganador", list(Rol))
+def test_la_banca_pasa_a_quien_gano(ganador):
+    assert siguiente_banca(ganador) is ganador
+
+
+def test_la_banca_se_conserva_mientras_gane():
+    banca = Rol.PC
+    ganador = ganador_de_ronda(Resultado.GANA_PC, banca)
+    assert siguiente_banca(ganador) is banca
+
+
+def test_la_banca_cambia_cuando_pierde():
+    banca = Rol.PC
+    ganador = ganador_de_ronda(Resultado.GANA_JUGADOR, banca)
+    assert siguiente_banca(ganador) is Rol.JUGADOR
+
+
+def test_empatar_de_banca_conserva_la_banca():
+    banca = Rol.JUGADOR
+    ganador = ganador_de_ronda(Resultado.EMPATE, banca)
+    assert siguiente_banca(ganador) is Rol.JUGADOR
+
+
+# --- Rol ----------------------------------------------------------------------
+
+
+def test_el_rival_de_cada_rol():
+    assert Rol.JUGADOR.rival is Rol.PC
+    assert Rol.PC.rival is Rol.JUGADOR
+
+
+@pytest.mark.parametrize("rol", list(Rol))
+def test_el_rival_del_rival_es_uno_mismo(rol):
+    assert rol.rival.rival is rol

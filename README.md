@@ -74,11 +74,13 @@ en la API de Flet.
 Cada jugador recibe 2 cartas y puede pedir una tercera (máximo 3). El puntaje es
 la suma de las cartas, donde las figuras (10, 11, 12) valen 10, y **solo cuenta
 el último dígito** de la suma. Tres figuras es una mano especial que vale 8.5.
-Gana quien tenga más puntaje; el empate favorece a la banca. La partida se juega
-a 10 rondas ganadas.
+Gana quien tenga más puntaje; el empate favorece a la banca, y la banca pasa a
+quien gane la ronda.
 
-Están documentadas en detalle en [docs/REGLAS.md](docs/REGLAS.md), incluyendo
-qué partes se infirieron del código original y cuáles faltan por confirmar.
+Se juega por fichas: cada ronda se apuesta y el ganador se lleva la apuesta del
+otro. La partida termina cuando alguien se queda sin fichas.
+
+Están documentadas en detalle en [docs/REGLAS.md](docs/REGLAS.md).
 
 ## Estructura
 
@@ -88,9 +90,12 @@ makai/core/              Lógica de juego pura, sin dependencias de UI.
   cartas.py                Baraja española de 40 cartas.
   reglas.py                Puntuación y resolución de rondas.
   partida.py               Máquina de estados de la partida.
+makai/ai/                Estrategias de la PC, por nivel de dificultad.
 makai/ui/                Apoyo a la presentación.
   layout.py                Medidas responsive (aritmética pura, sin Flet).
   audio.py                 Música y efectos sobre ft.Audio, con silencio.
+  estadisticas.py          Historial del jugador, persistido.
+  preferencias.py          Dificultad elegida, persistida.
 tests/                   Suite de tests (no requiere Flet).
 docs/REGLAS.md           Reglas del juego, con lo confirmado y lo pendiente.
 pyproject.toml           Metadatos y configuración de `flet build`.

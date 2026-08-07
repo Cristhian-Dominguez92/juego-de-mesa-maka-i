@@ -2,7 +2,7 @@
 
 Ejercita los handlers reales de main.py contra un `Page` falso: verifica que los
 botones estén bien cableados a la `Partida`, que el marcador se actualice y que
-el reinicio de fin de partida funcione. No dibuja nada.
+el cierre de partida funcione. No dibuja nada.
 
 Se salta si flet no está instalado, para que la suite siga corriendo sin la UI.
 """
@@ -13,14 +13,21 @@ import pytest
 
 pytest.importorskip("flet")
 
+import flet as ft  # noqa: E402
+
 import main as juego  # noqa: E402
+from makai.ai import Dificultad  # noqa: E402
+from makai.core import FICHAS_INICIALES, Rol  # noqa: E402
+from makai.ui import estadisticas as stats  # noqa: E402
+from makai.ui.audio import CLAVE_SILENCIO  # noqa: E402
+from makai.ui.preferencias import CLAVE_DIFICULTAD  # noqa: E402
 
 
 class ClientStorageStub:
     """client_storage respaldado por un dict, para verificar la persistencia."""
 
-    def __init__(self):
-        self.datos = {}
+    def __init__(self, datos=None):
+        self.datos = dict(datos or {})
 
     def get(self, clave):
         return self.datos.get(clave)
@@ -33,10 +40,10 @@ class ClientStorageStub:
 class PageStub:
     """Lo mínimo de ft.Page que main.py usa."""
 
-    def __init__(self, width=None):
+    def __init__(self, width=None, almacenamiento=None):
         self.controls = []
         self.overlay = []
-        self.client_storage = ClientStorageStub()
+        self.client_storage = almacenamiento or ClientStorageStub()
         self.updates = 0
         self.width = width
         self.title = None
@@ -70,6 +77,17 @@ def sin_esperas(monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", no_esperar)
 
 
+class Menu:
+    """Controles de la pantalla de inicio."""
+
+    def __init__(self, page):
+        self.page = page
+        col = page.controls[0].content
+        self.dificultad = col.controls[4]
+        self.estadisticas = col.controls[5]
+        self.comenzar = col.controls[-1]
+
+
 class Tablero:
     """Acceso a los controles que main.py arma, para no repetir índices.
 
@@ -82,22 +100,45 @@ class Tablero:
         encabezado = root_col.controls[0]
         self.marcador = encabezado.controls[0]
         self.silencio = encabezado.controls[1]
-        self.estado = root_col.controls[1].content
-        self.cartas_pc = root_col.controls[3]
-        self.cartas_jugador = root_col.controls[5]
+        self.banca = root_col.controls[1]
+        self.estado = root_col.controls[2].content
+        self.cartas_pc = root_col.controls[4]
+        self.cartas_jugador = root_col.controls[6]
+        fila_apuesta = root_col.controls[8]
+        self.bajar, self.apuesta, self.subir = fila_apuesta.controls
         self.pedir, self.plantarse, self.repartir = root_col.controls[-1].controls
 
 
-async def abrir_juego(width=None):
-    page = PageStub(width=width)
+async def abrir_menu(width=None, almacenamiento=None):
+    page = PageStub(width=width, almacenamiento=almacenamiento)
     await juego.main(page)
+    return Menu(page)
 
-    # Pantalla de inicio: SafeArea -> Column, y el ultimo control es el boton.
-    boton_comenzar = page.controls[0].content.controls[-1]
-    assert boton_comenzar.text == "COMENZAR JUEGO"
-    await boton_comenzar.on_click(None)
 
-    return Tablero(page)
+async def abrir_juego(width=None, almacenamiento=None):
+    menu = await abrir_menu(width=width, almacenamiento=almacenamiento)
+    assert menu.comenzar.text == "COMENZAR JUEGO"
+    await menu.comenzar.on_click(None)
+    return Tablero(menu.page)
+
+
+async def jugar_ronda(tablero, pedir=0):
+    await tablero.repartir.on_click(None)
+    for _ in range(pedir):
+        await tablero.pedir.on_click(None)
+    await tablero.plantarse.on_click(None)
+
+
+async def apostar_el_maximo(tablero):
+    """Sube la apuesta hasta el tope, para que una sola ronda decida todo."""
+    for _ in range(100):
+        if tablero.subir.disabled:
+            break
+        await tablero.subir.on_click(None)
+
+
+def marcador_de(fichas_jugador, fichas_pc):
+    return f"Vos {fichas_jugador} 🪙  ·  {fichas_pc} 🪙 PC"
 
 
 # --- Arranque -----------------------------------------------------------------
@@ -113,7 +154,7 @@ def test_la_pantalla_de_inicio_se_dibuja():
 
 def test_se_entra_al_juego_desde_el_inicio(sin_esperas):
     tablero = asyncio.run(abrir_juego())
-    assert tablero.marcador.value == "Usuario 0 - 0 PC"
+    assert tablero.marcador.value == marcador_de(FICHAS_INICIALES, FICHAS_INICIALES)
     assert [b.text for b in (tablero.pedir, tablero.plantarse, tablero.repartir)] == [
         "PEDIR",
         "PLANTARSE",
@@ -126,6 +167,11 @@ def test_los_botones_arrancan_en_el_estado_correcto(sin_esperas):
     assert tablero.pedir.disabled
     assert tablero.plantarse.disabled
     assert not tablero.repartir.disabled
+
+
+def test_al_empezar_la_banca_es_la_pc(sin_esperas):
+    tablero = asyncio.run(abrir_juego())
+    assert tablero.banca.value == juego.texto_banca(Rol.PC)
 
 
 # --- Una ronda ----------------------------------------------------------------
@@ -157,16 +203,16 @@ def test_pedir_agrega_una_tercera_carta_y_se_deshabilita(sin_esperas):
     assert tablero.pedir.disabled, "no se puede pedir una cuarta carta"
 
 
-def test_plantarse_resuelve_la_ronda_y_actualiza_el_marcador(sin_esperas):
+def test_plantarse_mueve_las_fichas(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
-        await tablero.repartir.on_click(None)
-        await tablero.plantarse.on_click(None)
+        await jugar_ronda(tablero)
         return tablero
 
     tablero = asyncio.run(flujo())
-    assert tablero.marcador.value in ("Usuario 1 - 0 PC", "Usuario 0 - 1 PC")
-    assert not tablero.repartir.disabled, "se debe poder repartir la ronda siguiente"
+    esperados = {marcador_de(105, 95), marcador_de(95, 105)}
+    assert tablero.marcador.value in esperados
+    assert not tablero.repartir.disabled
     assert tablero.pedir.disabled
     assert tablero.plantarse.disabled
 
@@ -174,87 +220,265 @@ def test_plantarse_resuelve_la_ronda_y_actualiza_el_marcador(sin_esperas):
 def test_el_mensaje_de_la_ronda_es_uno_de_los_previstos(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
-        await tablero.repartir.on_click(None)
-        await tablero.plantarse.on_click(None)
+        await jugar_ronda(tablero)
         return tablero
 
     tablero = asyncio.run(flujo())
     assert tablero.estado.value in juego.MENSAJE_RONDA.values()
 
 
-# --- Partida completa ---------------------------------------------------------
+def test_el_total_de_fichas_se_conserva(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        for _ in range(8):
+            await jugar_ronda(tablero)
+        return tablero.marcador.value
+
+    marcador = asyncio.run(flujo())
+    numeros = [int(t) for t in marcador.replace("·", " ").split() if t.isdigit()]
+    assert sum(numeros) == 2 * FICHAS_INICIALES
 
 
-def grabar_pantalla(tablero):
-    """Registra marcador y mensaje en cada page.update().
+# --- Apuestas -----------------------------------------------------------------
 
-    Hace falta porque el fin de partida muestra el 10 y el mensaje de
-    victoria/derrota, pero reinicia el marcador antes de que el handler
-    termine: mirando solo el estado final esos pasos son invisibles.
-    """
-    historial = []
-    original = tablero.page.update
 
-    def update():
-        original()
-        historial.append((tablero.marcador.value, tablero.estado.value))
+def test_la_apuesta_arranca_visible(sin_esperas):
+    tablero = asyncio.run(abrir_juego())
+    assert "Apuesta:" in tablero.apuesta.value
 
-    tablero.page.update = update
-    return historial
+
+def test_subir_y_bajar_la_apuesta(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        inicial = tablero.apuesta.value
+        await tablero.subir.on_click(None)
+        subida = tablero.apuesta.value
+        await tablero.bajar.on_click(None)
+        return inicial, subida, tablero.apuesta.value
+
+    inicial, subida, final = asyncio.run(flujo())
+    assert subida != inicial
+    assert final == inicial
+
+
+def test_no_se_puede_bajar_por_debajo_del_minimo(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        for _ in range(20):
+            await tablero.bajar.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    assert tablero.apuesta.value == "Apuesta: 1 🪙"
+    assert tablero.bajar.disabled
+
+
+def test_no_se_puede_subir_por_encima_del_maximo(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await apostar_el_maximo(tablero)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    assert tablero.apuesta.value == f"Apuesta: {FICHAS_INICIALES} 🪙"
+    assert tablero.subir.disabled
+
+
+def test_la_apuesta_no_se_puede_cambiar_con_la_ronda_en_juego(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        antes = tablero.apuesta.value
+        await tablero.subir.on_click(None)
+        return antes, tablero.apuesta.value, tablero.subir.disabled
+
+    antes, despues, deshabilitado = asyncio.run(flujo())
+    assert antes == despues
+    assert deshabilitado
+
+
+def test_apostar_mas_alto_mueve_mas_fichas(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        for _ in range(3):  # 5 -> 20
+            await tablero.subir.on_click(None)
+        await jugar_ronda(tablero)
+        return tablero.marcador.value
+
+    marcador = asyncio.run(flujo())
+    assert marcador in {marcador_de(120, 80), marcador_de(80, 120)}
+
+
+# --- Banca --------------------------------------------------------------------
+
+
+def test_la_banca_pasa_al_ganador_de_la_ronda(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await jugar_ronda(tablero)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    # Quien haya ganado, el cartel debe coincidir con el marcador.
+    gano_jugador = tablero.marcador.value == marcador_de(105, 95)
+    esperado = Rol.JUGADOR if gano_jugador else Rol.PC
+    assert tablero.banca.value == juego.texto_banca(esperado)
 
 
 @pytest.mark.lento
-def test_una_partida_completa_no_rompe_y_reinicia_el_marcador(sin_esperas):
-    """Juega hasta que alguien llega a 10, verifica el cierre y sigue jugando.
-
-    Cubre el camino de fin de partida, que en el codigo original estaba
-    duplicado en dos bloques identicos.
-    """
-
+def test_la_banca_cambia_de_lado_a_lo_largo_de_la_partida(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
-        historial = grabar_pantalla(tablero)
-        for _ in range(200):
-            await tablero.repartir.on_click(None)
-            await tablero.plantarse.on_click(None)
-            if tablero.marcador.value == "Usuario 0 - 0 PC":
-                # La partida termino y se reinicio: jugamos una ronda mas.
-                await tablero.repartir.on_click(None)
-                await tablero.plantarse.on_click(None)
-                return tablero, historial
-        pytest.fail("la partida nunca termino en 200 rondas")
+        vistos = set()
+        for _ in range(40):
+            await jugar_ronda(tablero)
+            vistos.add(tablero.banca.value)
+        return vistos
 
-    tablero, historial = asyncio.run(flujo())
-    marcadores = [m for m, _ in historial]
-    mensajes = [e for _, e in historial]
+    vistos = asyncio.run(flujo())
+    assert len(vistos) == 2, "la banca nunca cambio de lado"
 
-    # Alguien llego a 10 en algun momento.
-    assert any("10" in m for m in marcadores), "nadie llego a 10"
 
-    # Se mostro el cierre de partida.
-    finales = {juego.MENSAJE_GANASTE, juego.MENSAJE_PERDISTE}
-    assert finales & set(mensajes), "no se mostro el mensaje de fin de partida"
+# --- Fin de partida -----------------------------------------------------------
 
-    # Y se pudo seguir jugando despues del reinicio.
-    assert tablero.marcador.value in ("Usuario 1 - 0 PC", "Usuario 0 - 1 PC")
+
+def test_apostando_todo_una_ronda_define_la_partida(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await apostar_el_maximo(tablero)
+        await jugar_ronda(tablero)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    # Tras terminar, la partida se reinicia y vuelve el titulo.
+    assert tablero.marcador.value == marcador_de(FICHAS_INICIALES, FICHAS_INICIALES)
+    assert tablero.estado.value == juego.TITULO
+    assert tablero.estado.color == "white"
     assert not tablero.repartir.disabled
 
 
-@pytest.mark.lento
-def test_el_titulo_se_restaura_tras_terminar_la_partida(sin_esperas):
+def test_se_muestra_el_cierre_de_partida(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
-        for _ in range(200):
-            await tablero.repartir.on_click(None)
-            await tablero.plantarse.on_click(None)
-            if tablero.marcador.value == "Usuario 0 - 0 PC":
-                return tablero
-        pytest.fail("la partida nunca termino en 200 rondas")
+        mensajes = []
+        original = tablero.page.update
 
-    tablero = asyncio.run(flujo())
-    assert tablero.estado.value == juego.TITULO
-    assert tablero.estado.color == "white"
-    assert tablero.estado.size == 30
+        def update():
+            original()
+            mensajes.append(tablero.estado.value)
+
+        tablero.page.update = update
+
+        await apostar_el_maximo(tablero)
+        await jugar_ronda(tablero)
+        return mensajes
+
+    mensajes = asyncio.run(flujo())
+    finales = {juego.MENSAJE_GANASTE, juego.MENSAJE_PERDISTE}
+    assert finales & set(mensajes), "no se mostro el mensaje de fin de partida"
+
+
+def test_se_puede_seguir_jugando_tras_terminar(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await apostar_el_maximo(tablero)
+        await jugar_ronda(tablero)
+        await jugar_ronda(tablero)
+        return tablero.marcador.value
+
+    marcador = asyncio.run(flujo())
+    assert marcador in {marcador_de(105, 95), marcador_de(95, 105)}
+
+
+# --- Dificultad ---------------------------------------------------------------
+
+
+def test_la_dificultad_se_guarda_al_elegirla():
+    async def flujo():
+        menu = await abrir_menu()
+        menu.dificultad.value = Dificultad.DIFICIL.value
+        await menu.dificultad.on_change(None)
+        return menu.page.client_storage.get(CLAVE_DIFICULTAD)
+
+    assert asyncio.run(flujo()) == Dificultad.DIFICIL.value
+
+
+def test_se_respeta_la_dificultad_guardada():
+    async def flujo():
+        almacen = ClientStorageStub({CLAVE_DIFICULTAD: Dificultad.FACIL.value})
+        menu = await abrir_menu(almacenamiento=almacen)
+        return menu.dificultad.value
+
+    assert asyncio.run(flujo()) == Dificultad.FACIL.value
+
+
+def test_una_dificultad_corrupta_no_rompe_el_menu():
+    async def flujo():
+        almacen = ClientStorageStub({CLAVE_DIFICULTAD: "imposible"})
+        menu = await abrir_menu(almacenamiento=almacen)
+        return menu.dificultad.value
+
+    assert asyncio.run(flujo()) == Dificultad.NORMAL.value
+
+
+def test_el_menu_ofrece_las_tres_dificultades():
+    async def flujo():
+        menu = await abrir_menu()
+        return [o.key for o in menu.dificultad.options]
+
+    assert asyncio.run(flujo()) == [d.value for d in Dificultad]
+
+
+# --- Estadísticas -------------------------------------------------------------
+
+
+def test_las_estadisticas_se_guardan_al_jugar(sin_esperas):
+    async def flujo():
+        almacen = ClientStorageStub()
+        tablero = await abrir_juego(almacenamiento=almacen)
+        await jugar_ronda(tablero)
+        return stats.cargar(almacen)
+
+    e = asyncio.run(flujo())
+    assert e.rondas_jugadas == 1
+
+
+def test_la_partida_terminada_queda_registrada(sin_esperas):
+    async def flujo():
+        almacen = ClientStorageStub()
+        tablero = await abrir_juego(almacenamiento=almacen)
+        await apostar_el_maximo(tablero)
+        await jugar_ronda(tablero)
+        return stats.cargar(almacen)
+
+    e = asyncio.run(flujo())
+    assert e.partidas_jugadas == 1
+    assert e.rondas_jugadas == 1
+
+
+def test_el_menu_muestra_las_estadisticas_guardadas():
+    async def flujo():
+        almacen = ClientStorageStub()
+        stats.guardar(
+            almacen,
+            stats.Estadisticas(
+                partidas_jugadas=4, partidas_ganadas=3, rondas_jugadas=50, rondas_ganadas=30
+            ),
+        )
+        menu = await abrir_menu(almacenamiento=almacen)
+        return menu.estadisticas.value
+
+    texto = asyncio.run(flujo())
+    assert "3/4" in texto
+    assert "60.0%" in texto
+
+
+def test_sin_historial_el_menu_no_muestra_estadisticas():
+    async def flujo():
+        menu = await abrir_menu()
+        return menu.estadisticas.value
+
+    assert asyncio.run(flujo()) == ""
 
 
 # --- Silencio -----------------------------------------------------------------
@@ -271,8 +495,6 @@ def test_el_boton_de_silencio_alterna_icono_y_estado(sin_esperas):
         return tablero, estados
 
     tablero, estados = asyncio.run(flujo())
-    import flet as ft
-
     assert estados == [ft.Icons.VOLUME_UP, ft.Icons.VOLUME_OFF, ft.Icons.VOLUME_UP]
     assert tablero.silencio.tooltip == "Silenciar"
 
@@ -281,27 +503,17 @@ def test_el_silencio_se_recuerda_en_client_storage(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
         await tablero.silencio.on_click(None)
-        return tablero
+        return tablero.page.client_storage.get(CLAVE_SILENCIO)
 
-    tablero = asyncio.run(flujo())
-    from makai.ui.audio import CLAVE_SILENCIO
-
-    assert tablero.page.client_storage.get(CLAVE_SILENCIO) is True
+    assert asyncio.run(flujo()) is True
 
 
 def test_arranca_silenciado_si_asi_quedo_la_vez_anterior(sin_esperas):
-    from makai.ui.audio import CLAVE_SILENCIO
-
     async def flujo():
-        page = PageStub()
-        page.client_storage.set(CLAVE_SILENCIO, True)
-        await juego.main(page)
-        await page.controls[0].content.controls[-1].on_click(None)
-        return Tablero(page)
+        almacen = ClientStorageStub({CLAVE_SILENCIO: True})
+        return await abrir_juego(almacenamiento=almacen)
 
     tablero = asyncio.run(flujo())
-    import flet as ft
-
     assert tablero.silencio.icon == ft.Icons.VOLUME_OFF
     assert tablero.silencio.tooltip == "Activar sonido"
 
@@ -344,8 +556,7 @@ def test_redimensionar_recalcula_las_cartas(sin_esperas):
 
         tablero.page.width = 320
         await tablero.page.on_resized(None)
-        despues = tablero.cartas_jugador.controls[0].content.width
-        return antes, despues
+        return antes, tablero.cartas_jugador.controls[0].content.width
 
     antes, despues = asyncio.run(flujo())
     assert despues < antes
@@ -368,8 +579,7 @@ def test_redimensionar_no_revela_las_cartas_de_la_pc(sin_esperas):
 def test_redimensionar_conserva_las_cartas_reveladas(sin_esperas):
     async def flujo():
         tablero = await abrir_juego(width=1280)
-        await tablero.repartir.on_click(None)
-        await tablero.plantarse.on_click(None)
+        await jugar_ronda(tablero)
         tablero.page.width = 400
         await tablero.page.on_resized(None)
         return [c.content.src for c in tablero.cartas_pc.controls]
@@ -388,7 +598,6 @@ def test_repartir_dos_veces_seguidas_no_rompe(sin_esperas):
         tablero = await abrir_juego()
         await tablero.repartir.on_click(None)
         cartas = len(tablero.cartas_jugador.controls)
-        # Segundo clic antes de que el cliente redibuje el boton deshabilitado.
         await tablero.repartir.on_click(None)
         return cartas, len(tablero.cartas_jugador.controls)
 
@@ -399,8 +608,7 @@ def test_repartir_dos_veces_seguidas_no_rompe(sin_esperas):
 def test_plantarse_dos_veces_seguidas_no_rompe(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
-        await tablero.repartir.on_click(None)
-        await tablero.plantarse.on_click(None)
+        await jugar_ronda(tablero)
         marcador = tablero.marcador.value
         await tablero.plantarse.on_click(None)
         return marcador, tablero.marcador.value
@@ -413,9 +621,8 @@ def test_pedir_de_mas_no_rompe(sin_esperas):
     async def flujo():
         tablero = await abrir_juego()
         await tablero.repartir.on_click(None)
-        await tablero.pedir.on_click(None)
-        await tablero.pedir.on_click(None)
-        await tablero.pedir.on_click(None)
+        for _ in range(3):
+            await tablero.pedir.on_click(None)
         return tablero
 
     tablero = asyncio.run(flujo())
@@ -430,26 +637,5 @@ def test_pedir_o_plantarse_antes_de_repartir_no_rompe(sin_esperas):
         return tablero
 
     tablero = asyncio.run(flujo())
-    assert tablero.marcador.value == "Usuario 0 - 0 PC"
+    assert tablero.marcador.value == marcador_de(FICHAS_INICIALES, FICHAS_INICIALES)
     assert tablero.cartas_jugador.controls == []
-
-
-def test_plantarse_durante_el_turno_de_la_pc_no_rompe(sin_esperas):
-    """El turno de la banca dura varios segundos: hay tiempo de volver a hacer clic."""
-
-    async def flujo():
-        tablero = await abrir_juego()
-        await tablero.repartir.on_click(None)
-        # Dispara el turno de la banca y, en el medio, otro clic.
-        primera = tablero.plantarse.on_click(None)
-        await primera
-        await tablero.plantarse.on_click(None)
-        await tablero.repartir.on_click(None)
-        await tablero.repartir.on_click(None)
-        return tablero
-
-    tablero = asyncio.run(flujo())
-    # Una sola ronda resuelta, y una nueva repartida.
-    puntos = tablero.marcador.value
-    assert puntos in ("Usuario 1 - 0 PC", "Usuario 0 - 1 PC")
-    assert len(tablero.cartas_jugador.controls) == 2
