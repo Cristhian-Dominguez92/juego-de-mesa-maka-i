@@ -29,24 +29,29 @@ VOLUMEN_MUSICA = 0.3
 VOLUMEN_EFECTOS = 0.8
 
 
+#: Para cada sonido, los nombres aceptados en orden de preferencia. El .wav de
+#: la música lo genera `tools/generar_musica.py`; un .mp3 puesto a mano tiene
+#: prioridad, para poder reemplazar la música sin tocar código.
+CANDIDATOS = {
+    "musica_src": ("background_music.mp3", "background_music.wav"),
+    "victoria_src": ("victoria.mp3", "victoria.wav"),
+}
+
+
 def descubrir_fuentes(assets_dir: str, recursos: str) -> dict[str, str | None]:
     """Busca en disco los archivos de audio y devuelve sus rutas de asset.
 
     Las rutas devueltas son relativas a `assets_dir`, que es como las resuelve
-    Flet. Un valor None significa que el archivo no está y que ese sonido
+    Flet. Un valor None significa que no hay archivo y que ese sonido
     simplemente no va a sonar.
-
-    La música de fondo no viene en el repositorio por licencia (ver CREDITS.md):
-    hay que dejar un archivo con licencia libre en esa ruta.
     """
-    archivos = {
-        "musica_src": "background_music.mp3",
-        "victoria_src": "victoria.mp3",
-    }
     fuentes: dict[str, str | None] = {}
-    for nombre, archivo in archivos.items():
-        existe = os.path.exists(os.path.join(assets_dir, recursos, archivo))
-        fuentes[nombre] = f"{recursos}/{archivo}" if existe else None
+    for nombre, nombres_posibles in CANDIDATOS.items():
+        fuentes[nombre] = None
+        for archivo in nombres_posibles:
+            if os.path.exists(os.path.join(assets_dir, recursos, archivo)):
+                fuentes[nombre] = f"{recursos}/{archivo}"
+                break
     return fuentes
 
 

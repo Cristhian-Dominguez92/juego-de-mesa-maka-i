@@ -20,7 +20,7 @@ from makai.ui.preferencias import cargar_dificultad, guardar_dificultad
 # el prefijo "assets/".
 ASSETS_DIR = "assets"
 RECURSOS = "Recursos"
-DORSO = f"{RECURSOS}/dorso.jpeg"
+DORSO = f"{RECURSOS}/dorso.webp"
 
 TITULO = "¡JAHUGA Maka-'I!"
 
@@ -317,6 +317,9 @@ async def main(page: ft.Page):
                 scale=animacion.escala(),
                 opacity=1,
                 border_radius=10,
+                # Las imágenes vienen sin alfa (ver tools/optimizar_imagenes.py),
+                # así que el redondeo de las esquinas lo hace el recorte de acá.
+                clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
             )
             return animacion.ocultar(contenedor) if por_aparecer else contenedor
 

@@ -48,7 +48,7 @@ class Carta:
     @property
     def nombre_archivo(self) -> str:
         """Nombre del archivo de imagen, sin directorio."""
-        return f"{self.valor}_{self.palo.value}.jpeg"
+        return f"{self.valor}_{self.palo.value}.webp"
 
     def __str__(self) -> str:
         return f"{self.valor} de {self.palo.name.capitalize()}"

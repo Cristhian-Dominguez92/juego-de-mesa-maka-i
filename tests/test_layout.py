@@ -78,8 +78,14 @@ def test_una_pantalla_absurdamente_angosta_no_rompe():
 
 
 def test_el_alto_conserva_la_proporcion_de_las_imagenes():
-    assert alto_de_carta(100) == 150
+    """Las cartas españolas son más alargadas que las francesas: 1.58, no 1.5."""
+    assert alto_de_carta(100) == 158
     assert alto_de_carta(ANCHO_MINIMO_CARTA) == ANCHO_MINIMO_CARTA * PROPORCION_CARTA
+
+
+def test_la_proporcion_coincide_con_los_escaneos_reales():
+    # Los originales de Wikimedia son 2434x3846.
+    assert abs(PROPORCION_CARTA - 3846 / 2434) < 0.01
 
 
 def test_se_puede_pedir_una_mano_mas_chica():

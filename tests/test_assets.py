@@ -21,11 +21,21 @@ def test_cada_carta_tiene_su_imagen(carta):
 
 
 def test_existe_el_dorso():
-    assert (ASSETS / "dorso.jpeg").is_file()
+    assert (ASSETS / "dorso.webp").is_file()
 
 
 def test_no_hay_imagenes_huerfanas():
     """Toda imagen de carta en assets/ debe corresponder a una carta real."""
-    esperadas = {c.nombre_archivo for c in crear_mazo()} | {"dorso.jpeg"}
-    encontradas = {p.name for p in ASSETS.glob("*.jpeg")}
+    esperadas = {c.nombre_archivo for c in crear_mazo()} | {"dorso.webp"}
+    encontradas = {p.name for p in ASSETS.glob("*.webp")}
     assert encontradas - esperadas == set()
+
+
+def test_no_quedaron_las_imagenes_viejas():
+    """Los .jpeg de origen desconocido salieron del proyecto (ver CREDITS.md)."""
+    assert list(ASSETS.glob("*.jpeg")) == []
+
+
+def test_las_cartas_estan_optimizadas():
+    """Los PNG sin convertir hinchan el APK: 11.9 MB contra 1.1 MB en WebP."""
+    assert list(ASSETS.glob("*.png")) == [], "quedaron PNG sin convertir a WebP"

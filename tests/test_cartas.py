@@ -54,10 +54,10 @@ def test_la_carta_es_inmutable():
 
 
 def test_nombre_archivo_coincide_con_el_formato_de_los_assets():
-    assert Carta(Palo.OROS, 1).nombre_archivo == "1_oro.jpeg"
-    assert Carta(Palo.BASTOS, 12).nombre_archivo == "12_basto.jpeg"
-    assert Carta(Palo.COPAS, 10).nombre_archivo == "10_copa.jpeg"
-    assert Carta(Palo.ESPADAS, 7).nombre_archivo == "7_espada.jpeg"
+    assert Carta(Palo.OROS, 1).nombre_archivo == "1_oro.webp"
+    assert Carta(Palo.BASTOS, 12).nombre_archivo == "12_basto.webp"
+    assert Carta(Palo.COPAS, 10).nombre_archivo == "10_copa.webp"
+    assert Carta(Palo.ESPADAS, 7).nombre_archivo == "7_espada.webp"
 
 
 def test_barajar_conserva_todas_las_cartas():

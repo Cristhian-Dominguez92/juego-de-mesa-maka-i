@@ -9,3 +9,7 @@ flet[desktop]==0.28.3
 # Herramientas de calidad de código.
 ruff==0.16.1
 pytest==9.1.1
+
+# Solo para tools/optimizar_imagenes.py, que convierte los escaneos de la
+# baraja a WebP. No se empaqueta en el APK ni hace falta para jugar.
+pillow==12.3.0

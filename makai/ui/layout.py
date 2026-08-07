@@ -15,8 +15,10 @@ ANCHO_MAXIMO_CARTA = 100.0
 #: Por debajo de esto la figura de la carta deja de distinguirse.
 ANCHO_MINIMO_CARTA = 44.0
 
-#: Alto / ancho. Es la proporción de los .jpeg originales (150x100).
-PROPORCION_CARTA = 1.5
+#: Alto / ancho. Es la proporción real de los escaneos de la baraja Fournier
+#: de 1878 (2434x3846). Las cartas españolas son más alargadas que las
+#: francesas, así que este valor no es 1.5.
+PROPORCION_CARTA = 1.58
 
 #: Separación horizontal entre cartas de una misma mano.
 SEPARACION_CARTAS = 15.0

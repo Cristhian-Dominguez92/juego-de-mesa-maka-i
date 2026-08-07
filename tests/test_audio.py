@@ -74,11 +74,22 @@ def test_las_rutas_son_relativas_al_assets_dir(tmp_path):
     assert fuentes["musica_src"] == "Recursos/background_music.mp3"
 
 
-def test_el_proyecto_real_no_trae_musica_de_fondo():
-    """La musica con licencia hay que aportarla (ver CREDITS.md)."""
+def test_el_proyecto_real_trae_su_propia_musica():
+    """La musica la genera tools/generar_musica.py (ver CREDITS.md)."""
     fuentes = descubrir_fuentes("assets", "Recursos")
-    assert fuentes["musica_src"] is None
+    assert fuentes["musica_src"] == "Recursos/background_music.wav"
     assert fuentes["victoria_src"] == "Recursos/victoria.mp3"
+
+
+def test_se_prefiere_un_mp3_puesto_a_mano(tmp_path):
+    """Poder reemplazar la musica sin tocar codigo."""
+    recursos = tmp_path / "Recursos"
+    recursos.mkdir()
+    (recursos / "background_music.wav").write_bytes(b"")
+    (recursos / "background_music.mp3").write_bytes(b"")
+
+    fuentes = descubrir_fuentes(str(tmp_path), "Recursos")
+    assert fuentes["musica_src"] == "Recursos/background_music.mp3"
 
 
 # --- Construccion -------------------------------------------------------------

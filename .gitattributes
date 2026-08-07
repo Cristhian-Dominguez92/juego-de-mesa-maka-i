@@ -6,6 +6,7 @@
 *.jpeg binary
 *.jpg  binary
 *.png  binary
+*.webp binary
 *.mp3  binary
 *.wav  binary
 *.apk  binary

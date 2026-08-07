@@ -148,18 +148,17 @@ abrir una ventana, y está verificado por `tests/test_core_sin_ui.py`.
 
 Estas son las razones por las que el proyecto todavía no es distribuible:
 
-- **Assets sin licencia verificada.** Las 40 imágenes de cartas son de origen
-  desconocido. Ver [CREDITS.md](CREDITS.md).
-- **Sin música de fondo.** Se retiró un tema comercial sin licencia. El juego
-  ya la reproduce en bucle si dejás un archivo libre en
-  `assets/Recursos/background_music.mp3` (ver CREDITS.md); sin él, funciona en
-  silencio.
-- **La banca no rota** y el empate siempre la favorece, así que el juego está
-  sesgado en contra del jugador. Ver [docs/REGLAS.md](docs/REGLAS.md).
-- **Sin apuestas.** El Maka'i tradicional se juega apostando.
-- **APK sin firmar.**
+- **APK sin firmar** por defecto. Ver [Firmar el APK](#firmar-el-apk).
+- **El APK nunca se compiló.** Hace falta Flutter y el Android SDK; el primer
+  `flet build apk` puede necesitar ajustes.
 - **El audio en Android no está verificado en un dispositivo real.** Se migró a
   `ft.Audio`, que sí se empaqueta, pero no se probó el APK.
+- **`victoria.mp3` es de Mixkit**, el único asset de terceros que queda. Su
+  licencia permite este uso, pero conviene confirmar los términos vigentes.
+  Ver [CREDITS.md](CREDITS.md).
+- **El historial de git todavía contiene los assets retirados** (el tema con
+  copyright y los escaneos de origen desconocido). Purgarlos requiere reescribir
+  la historia del repositorio; ver CREDITS.md.
 
 ## Licencia
 
