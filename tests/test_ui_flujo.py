@@ -376,3 +376,80 @@ def test_redimensionar_conserva_las_cartas_reveladas(sin_esperas):
 
     fuentes = asyncio.run(flujo())
     assert juego.DORSO not in fuentes, "tras plantarse la mano de la PC queda visible"
+
+
+# --- Clics fuera de turno -----------------------------------------------------
+# Regresion: al jugar de verdad aparecian EstadoInvalido en consola. Deshabilitar
+# el boton no alcanza, porque entre el clic y el redibujado se cuelan eventos.
+
+
+def test_repartir_dos_veces_seguidas_no_rompe(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        cartas = len(tablero.cartas_jugador.controls)
+        # Segundo clic antes de que el cliente redibuje el boton deshabilitado.
+        await tablero.repartir.on_click(None)
+        return cartas, len(tablero.cartas_jugador.controls)
+
+    antes, despues = asyncio.run(flujo())
+    assert antes == despues == 2, "el segundo reparto no debe repartir de nuevo"
+
+
+def test_plantarse_dos_veces_seguidas_no_rompe(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        await tablero.plantarse.on_click(None)
+        marcador = tablero.marcador.value
+        await tablero.plantarse.on_click(None)
+        return marcador, tablero.marcador.value
+
+    antes, despues = asyncio.run(flujo())
+    assert antes == despues, "el segundo plantarse no debe resolver otra ronda"
+
+
+def test_pedir_de_mas_no_rompe(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        await tablero.pedir.on_click(None)
+        await tablero.pedir.on_click(None)
+        await tablero.pedir.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    assert len(tablero.cartas_jugador.controls) == 3
+
+
+def test_pedir_o_plantarse_antes_de_repartir_no_rompe(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.pedir.on_click(None)
+        await tablero.plantarse.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    assert tablero.marcador.value == "Usuario 0 - 0 PC"
+    assert tablero.cartas_jugador.controls == []
+
+
+def test_plantarse_durante_el_turno_de_la_pc_no_rompe(sin_esperas):
+    """El turno de la banca dura varios segundos: hay tiempo de volver a hacer clic."""
+
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        # Dispara el turno de la banca y, en el medio, otro clic.
+        primera = tablero.plantarse.on_click(None)
+        await primera
+        await tablero.plantarse.on_click(None)
+        await tablero.repartir.on_click(None)
+        await tablero.repartir.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    # Una sola ronda resuelta, y una nueva repartida.
+    puntos = tablero.marcador.value
+    assert puntos in ("Usuario 1 - 0 PC", "Usuario 0 - 1 PC")
+    assert len(tablero.cartas_jugador.controls) == 2

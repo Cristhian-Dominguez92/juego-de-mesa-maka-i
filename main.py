@@ -232,19 +232,30 @@ async def main(page: ft.Page):
             btn_silencio.tooltip = "Activar sonido" if silenciado else "Silenciar"
             page.update()
 
+        # Deshabilitar un boton no basta como guarda: entre el clic y el
+        # redibujado en el cliente se cuelan mas eventos, y un doble clic manda
+        # dos acciones. Cada handler comprueba el estado real de la partida y
+        # descarta en silencio lo que llegue fuera de turno.
+
         async def repartir(e):
+            if partida.estado is not Estado.ESPERANDO_REPARTO:
+                return
             partida.repartir()
             txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
             btn_p.disabled, btn_s.disabled, btn_r.disabled = False, False, True
             await actualizar_tablero()
 
         async def pedir(e):
+            if not partida.jugador_puede_pedir:
+                return
             partida.pedir()
             btn_p.disabled = not partida.jugador_puede_pedir
             txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
             await actualizar_tablero()
 
         async def plantarse(e):
+            if partida.estado is not Estado.TURNO_JUGADOR:
+                return
             btn_p.disabled, btn_s.disabled = True, True
             partida.plantarse()
 
