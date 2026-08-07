@@ -12,7 +12,7 @@ Los **assets** (imágenes y audio) se listan acá con su origen.
 |---|---|---|---|
 | `Recursos/1..12_{oro,copa,espada,basto}.webp` (40 cartas) | Baraja de Heraclio Fournier, 1878 | Dominio público | ✅ OK |
 | `Recursos/dorso.webp` | Ídem | Dominio público | ✅ OK |
-| `icon.png` | `tools/generar_icono.py` | Propio (MIT) | ✅ OK |
+| `icon.png` | Recorte del rey de oros de esa misma baraja | Dominio público | ✅ OK |
 
 ### La baraja
 
@@ -51,6 +51,21 @@ WebP, y hace **dos cosas que importan**:
 Los originales pesan 3,24 MB cada uno (130 MB en total, inviable para un APK).
 La cadena queda en **1,3 MB para las 41 imágenes**: menos de la quinta parte de
 lo que pesaban los escaneos de origen desconocido que había antes.
+
+### El ícono
+
+```bash
+python tools/generar_icono.py
+```
+
+Recorta la moneda de oros del rey de oros de la misma baraja. Se eligió la
+moneda y no una figura porque **Android recorta el ícono en círculo o en
+cuadrado redondeado según el launcher, y solo garantiza el 66% central**: una
+figura de cuerpo entero pierde los costados, la moneda centrada sobrevive
+cualquier recorte y además se lee mejor en chico.
+
+La carta se descarga al vuelo en alta resolución: la que se distribuye está a
+330 px y quedaría borrosa al ampliarla a 512.
 
 ### Generador propio de cartas (alternativa, no se usa)
 
