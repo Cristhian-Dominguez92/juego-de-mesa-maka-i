@@ -80,8 +80,39 @@ jobs:
       - name: Install Flet build tools
         run: pip install "flet[all]==0.28.3"
 
+      # El keystore se guarda como secreto en base64, porque los secretos de
+      # GitHub solo aceptan texto. Se mapea a una variable de entorno porque el
+      # contexto `secrets` no es utilizable dentro de un `if`.
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > upload-keystore.jks
+            echo "Keystore restaurado."
+          else
+            echo "Sin keystore configurado."
+          fi
+
       - name: Build APK
-        run: flet build apk --verbose
+        env:
+          FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          FLET_ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -f upload-keystore.jks ]; then
+            flet build apk --verbose \
+              --android-signing-key-store upload-keystore.jks \
+              --android-signing-key-alias upload
+          else
+            echo "::warning::Sin keystore: el APK sale SIN FIRMAR y no es publicable."
+            flet build apk --verbose
+          fi
+
+      # El keystore es una clave privada: no debe sobrevivir al job ni terminar
+      # dentro de un artefacto.
+      - name: Remove keystore
+        if: always()
+        run: rm -f upload-keystore.jks
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

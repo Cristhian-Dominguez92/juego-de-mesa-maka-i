@@ -42,9 +42,41 @@ flet build apk
 El resultado queda en `build/apk/`. El CI de GitHub Actions lo compila
 automáticamente en cada push a `main` (ver `.github/workflows/build.yml`).
 
-⚠️ El APK generado está **sin firmar**: sirve para probar en un dispositivo con
-"orígenes desconocidos" habilitado, pero no es publicable en Google Play. La
-firma se configura en `[tool.flet.android.signing]` dentro de `pyproject.toml`.
+Por defecto el APK sale **sin firmar**: sirve para probar en un dispositivo con
+"orígenes desconocidos" habilitado, pero no es publicable en Google Play.
+
+### Firmar el APK
+
+El keystore contiene tu clave privada de publicación. **Generalo vos** y no lo
+compartas: quien lo tenga junto con su contraseña puede publicar
+actualizaciones en tu nombre. Google Play no permite cambiar la clave de una
+app ya publicada, así que si lo perdés, perdés la app.
+
+```bash
+keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+Guardalo fuera del repositorio (`*.jks` está en `.gitignore`) y hacé una copia
+de seguridad en un lugar seguro.
+
+Para firmar localmente, descomentá `[tool.flet.android.signing]` en
+`pyproject.toml` y exportá las contraseñas antes de compilar:
+
+```bash
+export FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD='tu-contraseña'
+```
+
+Para que el CI firme, cargá tres secretos en el repositorio de GitHub
+(Settings → Secrets and variables → Actions):
+
+| Secreto | Contenido |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | El `.jks` codificado: `base64 -w0 upload-keystore.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | Contraseña del keystore |
+| `ANDROID_KEY_PASSWORD` | Contraseña de la clave |
+
+Sin esos secretos el workflow sigue funcionando: compila igual y avisa que el
+APK va sin firmar.
 
 ## Tests
 
@@ -93,9 +125,11 @@ makai/core/              Lógica de juego pura, sin dependencias de UI.
 makai/ai/                Estrategias de la PC, por nivel de dificultad.
 makai/ui/                Apoyo a la presentación.
   layout.py                Medidas responsive (aritmética pura, sin Flet).
+  animacion.py             Reparto y volteo de cartas.
   audio.py                 Música y efectos sobre ft.Audio, con silencio.
   estadisticas.py          Historial del jugador, persistido.
   preferencias.py          Dificultad elegida, persistida.
+  textos.py                Contenido de la pantalla de reglas.
 tests/                   Suite de tests (no requiere Flet).
 docs/REGLAS.md           Reglas del juego, con lo confirmado y lo pendiente.
 pyproject.toml           Metadatos y configuración de `flet build`.

@@ -37,6 +37,21 @@ dark_color = "#1a4a1a"
 # Ponelo en true cuando publiques en Play Store para reducir el tamaño.
 split_per_abi = false
 
+# --- Firma del APK ------------------------------------------------------------
+# Sin firma, el APK sirve para probar pero NO es publicable en Google Play.
+#
+# El keystore lo tenés que generar vos (contiene tu clave privada; ver README).
+# Este archivo solo declara dónde está y con qué alias. Las CONTRASEÑAS nunca
+# van acá: `flet build` las lee de las variables de entorno
+# FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD y FLET_ANDROID_SIGNING_KEY_PASSWORD.
+#
+# Descomentá cuando tengas el keystore. Si `key_store` apunta a un archivo que
+# no existe, el build falla; mientras esté comentado sale un APK sin firmar.
+#
+# [tool.flet.android.signing]
+# key_store = "upload-keystore.jks"
+# key_alias = "upload"
+
 # --- Calidad de código ---------------------------------------------------------
 [tool.ruff]
 line-length = 100

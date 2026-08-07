@@ -10,8 +10,8 @@ import flet as ft
 
 from makai.ai import Dificultad, estrategia_para
 from makai.core import Carta, Estado, Partida, Resultado, Rol
+from makai.ui import animacion, layout, textos
 from makai.ui import estadisticas as stats
-from makai.ui import layout
 from makai.ui.audio import GestorAudio, descubrir_fuentes
 from makai.ui.preferencias import cargar_dificultad, guardar_dificultad
 
@@ -132,6 +132,11 @@ async def main(page: ft.Page):
             width=300,
             height=50,
         )
+        btn_reglas = ft.TextButton(
+            "Cómo se juega",
+            on_click=mostrar_reglas,
+            style=ft.ButtonStyle(color="white70"),
+        )
 
         welcome_col = ft.Column(
             [
@@ -143,6 +148,7 @@ async def main(page: ft.Page):
                 txt_stats,
                 ft.Divider(height=20),
                 btn_start,
+                btn_reglas,
             ],
             # En una Column el eje principal es el vertical, asi que el centrado
             # vertical va en `alignment`. `vertical_alignment` solo existe en Row.
@@ -152,6 +158,52 @@ async def main(page: ft.Page):
         )
 
         page.add(ft.SafeArea(content=welcome_col, expand=True))
+        page.update()
+
+    # Pantalla de reglas
+    async def mostrar_reglas(e=None):
+        page.clean()
+        page.on_resized = None
+
+        secciones = []
+        for encabezado, cuerpo in textos.REGLAS:
+            secciones.append(
+                ft.Text(
+                    encabezado,
+                    size=layout.tamano_texto(20, page.width),
+                    weight=ft.FontWeight.BOLD,
+                    color="gold",
+                )
+            )
+            secciones.append(
+                ft.Text(cuerpo, size=layout.tamano_texto(15, page.width), color="white")
+            )
+            secciones.append(ft.Divider(height=16, color="transparent"))
+
+        contenido = ft.Column(
+            [
+                ft.Text(
+                    textos.TITULO_REGLAS,
+                    size=layout.tamano_texto(32, page.width),
+                    weight=ft.FontWeight.BOLD,
+                    color="orange",
+                ),
+                ft.Divider(height=16),
+                *secciones,
+                ft.Button(
+                    "VOLVER",
+                    on_click=mostrar_inicio,
+                    bgcolor="orange800",
+                    color="white",
+                    width=200,
+                    height=44,
+                ),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            spacing=6,
+        )
+
+        page.add(ft.SafeArea(content=contenido, expand=True))
         page.update()
 
     # Función para mostrar el juego principal
@@ -250,22 +302,26 @@ async def main(page: ft.Page):
             txt_banca.size = layout.tamano_texto(14, page.width)
             txt_apuesta.size = layout.tamano_texto(16, page.width)
 
-        def crear_carta_visual(carta, visible=True):
+        def crear_carta_visual(carta, visible=True, por_aparecer=False):
             ancho = layout.ancho_de_carta(page.width)
             img_path = ruta_imagen(carta) if visible and carta is not None else DORSO
-            return ft.Container(
+            contenedor = ft.Container(
                 content=ft.Image(
                     src=img_path,
                     width=ancho,
                     height=layout.alto_de_carta(ancho),
                     fit=ft.ImageFit.CONTAIN,
                 ),
-                animate_scale=600,
-                scale=1,
+                animate_scale=animacion.DURACION_APARICION,
+                animate_opacity=animacion.DURACION_APARICION,
+                scale=animacion.escala(),
+                opacity=1,
                 border_radius=10,
             )
+            return animacion.ocultar(contenedor) if por_aparecer else contenedor
 
         async def actualizar_tablero(revelar_pc=False):
+            """Redibuja el tablero completo, sin animación."""
             nonlocal pc_revelada
             pc_revelada = revelar_pc
             row_user.controls = [crear_carta_visual(c) for c in partida.mano_jugador]
@@ -274,6 +330,40 @@ async def main(page: ft.Page):
             else:
                 row_pc.controls = [crear_carta_visual(None, visible=False) for _ in partida.mano_pc]
             page.update()
+
+        async def repartir_animado():
+            """Reparte alternando entre las dos manos, como en la mesa."""
+            nonlocal pc_revelada
+            pc_revelada = False
+            row_user.controls = [
+                crear_carta_visual(c, por_aparecer=True) for c in partida.mano_jugador
+            ]
+            row_pc.controls = [
+                crear_carta_visual(None, visible=False, por_aparecer=True) for _ in partida.mano_pc
+            ]
+            page.update()
+            await animacion.aparecer(
+                animacion.repartir_alternando(row_user.controls, row_pc.controls),
+                page.update,
+            )
+
+        async def agregar_carta_animada(fila, carta, visible=True):
+            """Suma una carta a una mano ya repartida, sin redibujar el resto."""
+            nueva = crear_carta_visual(carta, visible=visible, por_aparecer=True)
+            fila.controls.append(nueva)
+            page.update()
+            await animacion.aparecer([nueva], page.update)
+
+        async def revelar_mano_pc():
+            """Da vuelta las cartas de la PC, una por una."""
+            nonlocal pc_revelada
+            for contenedor, carta in zip(row_pc.controls, partida.mano_pc, strict=True):
+
+                def mostrar(contenedor=contenedor, carta=carta):
+                    contenedor.content.src = ruta_imagen(carta)
+
+                await animacion.voltear(contenedor, mostrar, page.update)
+            pc_revelada = True
 
         async def al_redimensionar(e=None):
             """Recalcula tamaños cuando cambia la ventana o rota el teléfono."""
@@ -334,15 +424,15 @@ async def main(page: ft.Page):
             txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
             btn_p.disabled, btn_s.disabled, btn_r.disabled = False, False, True
             actualizar_botones_apuesta()
-            await actualizar_tablero()
+            await repartir_animado()
 
         async def pedir(e):
             if not partida.jugador_puede_pedir:
                 return
-            partida.pedir()
+            carta = partida.pedir()
             btn_p.disabled = not partida.jugador_puede_pedir
             txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
-            await actualizar_tablero()
+            await agregar_carta_animada(row_user, carta)
 
         async def plantarse(e):
             if partida.estado is not Estado.TURNO_JUGADOR:
@@ -355,14 +445,16 @@ async def main(page: ft.Page):
                 page.update()
                 await asyncio.sleep(0.7)
                 partida.pc_pide()
+                await agregar_carta_animada(row_pc, None, visible=False)
 
             ronda = partida.resolver_ronda()
             gano_ronda = ronda.ganador is Rol.JUGADOR
             estadisticas.registrar_ronda(gano_ronda, ronda.fichas_jugador)
 
+            await revelar_mano_pc()
             txt_status.value = MENSAJE_RONDA[ronda.resultado]
             mostrar_marcador()
-            await actualizar_tablero(revelar_pc=True)
+            page.update()
 
             if gano_ronda:
                 await asyncio.gather(_sonido_victoria(), _animar_victoria())

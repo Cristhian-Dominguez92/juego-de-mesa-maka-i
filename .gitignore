@@ -14,6 +14,11 @@ build/
 # Ver CREDITS.md: acá vive el material sin licencia verificada.
 _local/
 
+# Claves de firma del APK. NUNCA deben entrar al repositorio: quien tenga el
+# keystore y su contraseña puede publicar actualizaciones en tu nombre.
+*.jks
+*.keystore
+
 # Herramientas
 .ruff_cache/
 .pytest_cache/

@@ -36,7 +36,7 @@ def guardar_wav(filename, audio_data, sample_rate=22050):
         wav_file.setsampwidth(2)  # 16-bit
         wav_file.setframerate(sample_rate)
         wav_file.writeframes(audio_data)
-    print(f"✓ {filename}")
+    print(f"OK: {filename}")
 
 
 # Crear carpeta si no existe
@@ -58,4 +58,4 @@ for _ in range(6):  # 6 aplausos rápidos
     aplauso += generar_tonos([], 100)  # Silencio
 guardar_wav("assets/Recursos/applause.wav", aplauso)
 
-print("\n✓ Sonidos generados en assets/Recursos/")
+print("\nOK: sonidos generados en assets/Recursos/")

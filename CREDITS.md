@@ -67,8 +67,13 @@ cualquiera que tenga un clon. No se ejecutó automáticamente.
 
 | Archivo | Origen | Licencia | Estado |
 |---|---|---|---|
+| `icon.png` | Generado por `tools/generar_icono.py` | Propio (MIT) | ✅ OK |
 | `1..12_{oro,copa,espada,basto}.jpeg` (40 cartas) | Desconocido | Desconocida | ❌ **Verificar** |
 | `dorso.jpeg` | Desconocido | Desconocida | ❌ **Verificar** |
+
+El ícono de la aplicación se dibuja con aritmética pura, sin fuentes ni
+librerías de imagen, justamente para no depender de assets de terceros. Se
+regenera con `python tools/generar_icono.py`.
 
 ### ❌ Baraja española — ACCIÓN REQUERIDA
 

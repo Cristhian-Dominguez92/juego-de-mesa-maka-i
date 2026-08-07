@@ -19,6 +19,7 @@ import main as juego  # noqa: E402
 from makai.ai import Dificultad  # noqa: E402
 from makai.core import FICHAS_INICIALES, Rol  # noqa: E402
 from makai.ui import estadisticas as stats  # noqa: E402
+from makai.ui import textos  # noqa: E402
 from makai.ui.audio import CLAVE_SILENCIO  # noqa: E402
 from makai.ui.preferencias import CLAVE_DIFICULTAD  # noqa: E402
 
@@ -85,7 +86,17 @@ class Menu:
         col = page.controls[0].content
         self.dificultad = col.controls[4]
         self.estadisticas = col.controls[5]
-        self.comenzar = col.controls[-1]
+        self.comenzar = col.controls[-2]
+        self.reglas = col.controls[-1]
+
+
+class PantallaReglas:
+    def __init__(self, page):
+        self.page = page
+        col = page.controls[0].content
+        self.titulo = col.controls[0]
+        self.volver = col.controls[-1]
+        self.textos = [c.value for c in col.controls if getattr(c, "value", None)]
 
 
 class Tablero:
@@ -148,8 +159,8 @@ def test_la_pantalla_de_inicio_se_dibuja():
     page = PageStub()
     asyncio.run(juego.main(page))
     assert page.controls, "la pantalla de inicio no agrego ningun control"
-    textos = [c.value for c in page.controls[0].content.controls if hasattr(c, "value")]
-    assert "MAKA'I" in textos
+    visibles = [c.value for c in page.controls[0].content.controls if hasattr(c, "value")]
+    assert "MAKA'I" in visibles
 
 
 def test_se_entra_al_juego_desde_el_inicio(sin_esperas):
@@ -639,3 +650,130 @@ def test_pedir_o_plantarse_antes_de_repartir_no_rompe(sin_esperas):
     tablero = asyncio.run(flujo())
     assert tablero.marcador.value == marcador_de(FICHAS_INICIALES, FICHAS_INICIALES)
     assert tablero.cartas_jugador.controls == []
+
+
+# --- Pantalla de reglas -------------------------------------------------------
+
+
+def test_se_puede_abrir_las_reglas_desde_el_menu():
+    async def flujo():
+        menu = await abrir_menu()
+        assert menu.reglas.text == "Cómo se juega"
+        await menu.reglas.on_click(None)
+        return PantallaReglas(menu.page)
+
+    reglas = asyncio.run(flujo())
+    assert reglas.titulo.value == textos.TITULO_REGLAS
+
+
+def test_las_reglas_muestran_todas_las_secciones():
+    async def flujo():
+        menu = await abrir_menu()
+        await menu.reglas.on_click(None)
+        return PantallaReglas(menu.page)
+
+    reglas = asyncio.run(flujo())
+    for encabezado, cuerpo in textos.REGLAS:
+        assert encabezado in reglas.textos
+        assert cuerpo in reglas.textos
+
+
+def test_desde_las_reglas_se_vuelve_al_menu():
+    async def flujo():
+        menu = await abrir_menu()
+        await menu.reglas.on_click(None)
+        pantalla = PantallaReglas(menu.page)
+        assert pantalla.volver.text == "VOLVER"
+        await pantalla.volver.on_click(None)
+        return Menu(menu.page)
+
+    menu = asyncio.run(flujo())
+    assert menu.comenzar.text == "COMENZAR JUEGO"
+
+
+def test_las_reglas_no_dejan_un_on_resized_del_juego_colgado(sin_esperas):
+    """Volver del juego a otra pantalla debe soltar el handler de resize."""
+
+    async def flujo():
+        menu = await abrir_menu()
+        await menu.reglas.on_click(None)
+        return menu.page.on_resized
+
+    assert asyncio.run(flujo()) is None
+
+
+# --- Animaciones --------------------------------------------------------------
+
+
+def test_tras_repartir_ninguna_carta_queda_invisible(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    for fila in (tablero.cartas_jugador, tablero.cartas_pc):
+        for c in fila.controls:
+            assert c.opacity == 1, "una carta quedo a medio aparecer"
+            assert c.scale.scale == 1, "una carta quedo encogida"
+
+
+def test_la_carta_pedida_termina_visible(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        await tablero.pedir.on_click(None)
+        return tablero.cartas_jugador.controls[-1]
+
+    nueva = asyncio.run(flujo())
+    assert nueva.opacity == 1
+    assert nueva.scale.scale == 1
+
+
+def test_pedir_no_vuelve_a_animar_las_cartas_ya_repartidas(sin_esperas):
+    """La tercera carta se agrega; las dos primeras no se redibujan."""
+
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        antes = list(tablero.cartas_jugador.controls)
+        await tablero.pedir.on_click(None)
+        return antes, tablero.cartas_jugador.controls
+
+    antes, despues = asyncio.run(flujo())
+    assert despues[:2] == antes, "se recrearon las cartas ya visibles"
+    assert len(despues) == 3
+
+
+def test_al_plantarse_las_cartas_de_la_pc_quedan_de_frente(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await jugar_ronda(tablero)
+        return tablero.cartas_pc.controls
+
+    cartas = asyncio.run(flujo())
+    for c in cartas:
+        assert c.content.src != juego.DORSO, "una carta de la PC quedo boca abajo"
+        assert c.scale.scale_x == 1, "una carta de la PC quedo de canto"
+
+
+def test_las_cartas_que_pide_la_pc_se_muestran_boca_abajo(sin_esperas):
+    """Mientras la PC juega, sus cartas nuevas no deben revelarse."""
+    vistas = []
+
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        original = tablero.page.update
+
+        def update():
+            original()
+            vistas.append([c.content.src for c in tablero.cartas_pc.controls])
+
+        tablero.page.update = update
+        await tablero.plantarse.on_click(None)
+
+    asyncio.run(flujo())
+    # Antes del volteo, todo lo que se vio de la PC eran dorsos.
+    primeras = vistas[0] if vistas else []
+    assert all(src == juego.DORSO for src in primeras)
