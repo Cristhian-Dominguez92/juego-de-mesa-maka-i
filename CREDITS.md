@@ -34,7 +34,9 @@ Para reponerlo hay que colocar un tema con licencia compatible en:
 
     assets/Recursos/background_music.mp3
 
-El juego ya funciona sin ese archivo (no suena música de fondo, no falla).
+El juego detecta ese archivo al arrancar. Si está, lo reproduce en bucle a
+volumen 0.3 y el botón de silencio lo controla. Si no está, funciona en
+silencio sin fallar ni registrar errores.
 
 Fuentes recomendadas con licencia clara:
 

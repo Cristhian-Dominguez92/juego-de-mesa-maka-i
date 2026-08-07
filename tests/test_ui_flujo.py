@@ -16,16 +16,35 @@ pytest.importorskip("flet")
 import main as juego  # noqa: E402
 
 
+class ClientStorageStub:
+    """client_storage respaldado por un dict, para verificar la persistencia."""
+
+    def __init__(self):
+        self.datos = {}
+
+    def get(self, clave):
+        return self.datos.get(clave)
+
+    def set(self, clave, valor):
+        self.datos[clave] = valor
+        return True
+
+
 class PageStub:
     """Lo mínimo de ft.Page que main.py usa."""
 
-    def __init__(self):
+    def __init__(self, width=None):
         self.controls = []
+        self.overlay = []
+        self.client_storage = ClientStorageStub()
         self.updates = 0
+        self.width = width
         self.title = None
         self.bgcolor = None
         self.theme_mode = None
         self.vertical_alignment = None
+        self.scroll = None
+        self.on_resized = None
 
     def clean(self):
         self.controls.clear()
@@ -39,34 +58,42 @@ class PageStub:
 
 @pytest.fixture
 def sin_esperas(monkeypatch):
-    """Anula los sleep de animación y el audio para que el test sea instantáneo."""
+    """Anula los sleep de animación para que el test sea instantáneo.
+
+    El audio no hace falta silenciarlo: los controles ft.Audio no están unidos
+    a una página real, así que GestorAudio se traga los fallos de reproducción.
+    """
 
     async def no_esperar(_segundos):
         return None
 
     monkeypatch.setattr(asyncio, "sleep", no_esperar)
-    monkeypatch.setattr(juego, "pygame", None)
 
 
 class Tablero:
-    """Acceso a los controles que main.py arma, para no repetir índices."""
+    """Acceso a los controles que main.py arma, para no repetir índices.
+
+    La jerarquia es: page -> SafeArea -> Container -> Column.
+    """
 
     def __init__(self, page):
         self.page = page
-        root_col = page.controls[0].content
-        self.marcador = root_col.controls[0]
+        root_col = page.controls[0].content.content
+        encabezado = root_col.controls[0]
+        self.marcador = encabezado.controls[0]
+        self.silencio = encabezado.controls[1]
         self.estado = root_col.controls[1].content
         self.cartas_pc = root_col.controls[3]
         self.cartas_jugador = root_col.controls[5]
         self.pedir, self.plantarse, self.repartir = root_col.controls[-1].controls
 
 
-async def abrir_juego():
-    page = PageStub()
+async def abrir_juego(width=None):
+    page = PageStub(width=width)
     await juego.main(page)
 
-    # Pantalla de inicio: el ultimo control es el boton COMENZAR JUEGO.
-    boton_comenzar = page.controls[0].controls[-1]
+    # Pantalla de inicio: SafeArea -> Column, y el ultimo control es el boton.
+    boton_comenzar = page.controls[0].content.controls[-1]
     assert boton_comenzar.text == "COMENZAR JUEGO"
     await boton_comenzar.on_click(None)
 
@@ -80,7 +107,7 @@ def test_la_pantalla_de_inicio_se_dibuja():
     page = PageStub()
     asyncio.run(juego.main(page))
     assert page.controls, "la pantalla de inicio no agrego ningun control"
-    textos = [c.value for c in page.controls[0].controls if hasattr(c, "value")]
+    textos = [c.value for c in page.controls[0].content.controls if hasattr(c, "value")]
     assert "MAKA'I" in textos
 
 
@@ -205,10 +232,7 @@ def test_una_partida_completa_no_rompe_y_reinicia_el_marcador(sin_esperas):
     assert any("10" in m for m in marcadores), "nadie llego a 10"
 
     # Se mostro el cierre de partida.
-    finales = {
-        "🏆 ¡FELICIDADES, ACABAS DE GANAR LA PARTIDA! 🏆",
-        "😢 PERDISTE, ¡VUELVE A INTENTARLO!",
-    }
+    finales = {juego.MENSAJE_GANASTE, juego.MENSAJE_PERDISTE}
     assert finales & set(mensajes), "no se mostro el mensaje de fin de partida"
 
     # Y se pudo seguir jugando despues del reinicio.
@@ -231,3 +255,124 @@ def test_el_titulo_se_restaura_tras_terminar_la_partida(sin_esperas):
     assert tablero.estado.value == juego.TITULO
     assert tablero.estado.color == "white"
     assert tablero.estado.size == 30
+
+
+# --- Silencio -----------------------------------------------------------------
+
+
+def test_el_boton_de_silencio_alterna_icono_y_estado(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        estados = [tablero.silencio.icon]
+        await tablero.silencio.on_click(None)
+        estados.append(tablero.silencio.icon)
+        await tablero.silencio.on_click(None)
+        estados.append(tablero.silencio.icon)
+        return tablero, estados
+
+    tablero, estados = asyncio.run(flujo())
+    import flet as ft
+
+    assert estados == [ft.Icons.VOLUME_UP, ft.Icons.VOLUME_OFF, ft.Icons.VOLUME_UP]
+    assert tablero.silencio.tooltip == "Silenciar"
+
+
+def test_el_silencio_se_recuerda_en_client_storage(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.silencio.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    from makai.ui.audio import CLAVE_SILENCIO
+
+    assert tablero.page.client_storage.get(CLAVE_SILENCIO) is True
+
+
+def test_arranca_silenciado_si_asi_quedo_la_vez_anterior(sin_esperas):
+    from makai.ui.audio import CLAVE_SILENCIO
+
+    async def flujo():
+        page = PageStub()
+        page.client_storage.set(CLAVE_SILENCIO, True)
+        await juego.main(page)
+        await page.controls[0].content.controls[-1].on_click(None)
+        return Tablero(page)
+
+    tablero = asyncio.run(flujo())
+    import flet as ft
+
+    assert tablero.silencio.icon == ft.Icons.VOLUME_OFF
+    assert tablero.silencio.tooltip == "Activar sonido"
+
+
+# --- Responsive ---------------------------------------------------------------
+
+
+def test_en_pantalla_chica_las_cartas_se_achican(sin_esperas):
+    async def flujo(width):
+        tablero = await abrir_juego(width=width)
+        await tablero.repartir.on_click(None)
+        return tablero.cartas_jugador.controls[0].content.width
+
+    ancho_chico = asyncio.run(flujo(320))
+    ancho_escritorio = asyncio.run(flujo(1280))
+    assert ancho_chico < ancho_escritorio
+
+
+def test_las_cartas_entran_en_pantalla_de_telefono(sin_esperas):
+    from makai.ui.layout import MARGEN_LATERAL, SEPARACION_CARTAS
+
+    async def flujo():
+        tablero = await abrir_juego(width=320)
+        await tablero.repartir.on_click(None)
+        await tablero.pedir.on_click(None)
+        return tablero
+
+    tablero = asyncio.run(flujo())
+    cartas = tablero.cartas_jugador.controls
+    assert len(cartas) == 3
+    ocupado = sum(c.content.width for c in cartas) + SEPARACION_CARTAS * (len(cartas) - 1)
+    assert ocupado <= 320 - 2 * MARGEN_LATERAL + 0.01
+
+
+def test_redimensionar_recalcula_las_cartas(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego(width=1280)
+        await tablero.repartir.on_click(None)
+        antes = tablero.cartas_jugador.controls[0].content.width
+
+        tablero.page.width = 320
+        await tablero.page.on_resized(None)
+        despues = tablero.cartas_jugador.controls[0].content.width
+        return antes, despues
+
+    antes, despues = asyncio.run(flujo())
+    assert despues < antes
+
+
+def test_redimensionar_no_revela_las_cartas_de_la_pc(sin_esperas):
+    """El resize vuelve a dibujar el tablero: no debe filtrar la mano oculta."""
+
+    async def flujo():
+        tablero = await abrir_juego(width=1280)
+        await tablero.repartir.on_click(None)
+        tablero.page.width = 400
+        await tablero.page.on_resized(None)
+        return [c.content.src for c in tablero.cartas_pc.controls]
+
+    fuentes = asyncio.run(flujo())
+    assert fuentes == [juego.DORSO, juego.DORSO]
+
+
+def test_redimensionar_conserva_las_cartas_reveladas(sin_esperas):
+    async def flujo():
+        tablero = await abrir_juego(width=1280)
+        await tablero.repartir.on_click(None)
+        await tablero.plantarse.on_click(None)
+        tablero.page.width = 400
+        await tablero.page.on_resized(None)
+        return [c.content.src for c in tablero.cartas_pc.controls]
+
+    fuentes = asyncio.run(flujo())
+    assert juego.DORSO not in fuentes, "tras plantarse la mano de la PC queda visible"

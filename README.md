@@ -88,6 +88,9 @@ makai/core/              Lógica de juego pura, sin dependencias de UI.
   cartas.py                Baraja española de 40 cartas.
   reglas.py                Puntuación y resolución de rondas.
   partida.py               Máquina de estados de la partida.
+makai/ui/                Apoyo a la presentación.
+  layout.py                Medidas responsive (aritmética pura, sin Flet).
+  audio.py                 Música y efectos sobre ft.Audio, con silencio.
 tests/                   Suite de tests (no requiere Flet).
 docs/REGLAS.md           Reglas del juego, con lo confirmado y lo pendiente.
 pyproject.toml           Metadatos y configuración de `flet build`.
@@ -108,19 +111,16 @@ Estas son las razones por las que el proyecto todavía no es distribuible:
 
 - **Assets sin licencia verificada.** Las 40 imágenes de cartas son de origen
   desconocido. Ver [CREDITS.md](CREDITS.md).
-- **Sin música de fondo.** Se retiró un tema comercial sin licencia. Hay que
-  reponerlo con uno libre (ver CREDITS.md).
-- **El audio no funciona en Android.** `pygame` no existe en esa plataforma; el
-  juego lo importa dentro de un `try/except` y queda mudo. Migración a
-  `ft.Audio` pendiente (Fase 3).
-- **La música de fondo se corta en la primera mano** y no se reanuda
-  (se pausa al repartir y nada la reactiva). Se corrige junto con la
-  migración a `ft.Audio`.
-- **Layout no responsive.** Cartas de tamaño fijo, pensado para escritorio.
+- **Sin música de fondo.** Se retiró un tema comercial sin licencia. El juego
+  ya la reproduce en bucle si dejás un archivo libre en
+  `assets/Recursos/background_music.mp3` (ver CREDITS.md); sin él, funciona en
+  silencio.
 - **La banca no rota** y el empate siempre la favorece, así que el juego está
   sesgado en contra del jugador. Ver [docs/REGLAS.md](docs/REGLAS.md).
 - **Sin apuestas.** El Maka'i tradicional se juega apostando.
 - **APK sin firmar.**
+- **El audio en Android no está verificado en un dispositivo real.** Se migró a
+  `ft.Audio`, que sí se empaqueta, pero no se probó el APK.
 
 ## Licencia
 
