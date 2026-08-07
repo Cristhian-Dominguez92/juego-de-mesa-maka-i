@@ -86,6 +86,10 @@ quote-style = "preserve"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Sin esto, los tests solo corren con `python -m pytest`, que agrega el
+# directorio actual a sys.path. Invocando `pytest` a secas —como hace el CI—
+# no se encuentran ni `makai` ni `main`, y las 11 suites fallan al recolectar.
+pythonpath = ["."]
 markers = [
     "lento: juega partidas completas contra la UI; usar `-m 'not lento'` para saltarlos",
 ]
