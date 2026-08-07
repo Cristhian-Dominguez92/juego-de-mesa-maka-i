@@ -28,6 +28,24 @@ build_number = 1
 path = "."
 module = "main"
 
+# `flet build` empaqueta TODO el directorio de la app salvo lo que se liste
+# acá; por defecto solo excluye "build". Sin esta lista el APK se llevaría el
+# entorno virtual entero, los tests, y —lo más grave— el contenido de _local/,
+# que es justamente el material sin licencia que se retiró del proyecto.
+exclude = [
+    ".git",
+    ".github",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "_local",
+    "docs",
+    "tests",
+    "tools",
+    "venv",
+]
+
 [tool.flet.splash]
 color = "#1a4a1a"
 dark_color = "#1a4a1a"

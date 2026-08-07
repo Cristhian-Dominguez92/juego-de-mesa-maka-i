@@ -71,9 +71,22 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
+      # El runner ya trae un JDK, pero cuál cambia con la imagen. Fijarlo evita
+      # que un cambio de imagen rompa el build de Gradle sin aviso.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # flet-cli 0.28.3 exige Flutter 3.29.x exactamente: compara major y
+          # minor contra su MINIMAL_FLUTTER_VERSION. Con cualquier otra versión
+          # se descarga 3.29.2 por su cuenta, desperdiciando el cache y varios
+          # minutos de build.
+          flutter-version: '3.29.2'
           channel: 'stable'
           cache: true
 
