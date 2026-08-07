@@ -46,6 +46,15 @@ automáticamente en cada push a `main` (ver `.github/workflows/build.yml`).
 "orígenes desconocidos" habilitado, pero no es publicable en Google Play. La
 firma se configura en `[tool.flet.android.signing]` dentro de `pyproject.toml`.
 
+## Tests
+
+```bash
+pytest -q
+```
+
+El core no depende de Flet, así que los tests corren sin instalar la UI: basta
+con `pip install pytest`.
+
 ## Reglas del juego
 
 Cada jugador recibe 2 cartas y puede pedir una tercera (máximo 3). El puntaje es
@@ -54,13 +63,19 @@ el último dígito** de la suma. Tres figuras es una mano especial que vale 8.5.
 Gana quien tenga más puntaje; el empate favorece a la banca. La partida se juega
 a 10 rondas ganadas.
 
-> ⚠️ Estas reglas están inferidas del código, no de una fuente autorizada.
-> Documentarlas correctamente en `docs/REGLAS.md` es parte de la Fase 2.
+Están documentadas en detalle en [docs/REGLAS.md](docs/REGLAS.md), incluyendo
+qué partes se infirieron del código original y cuáles faltan por confirmar.
 
 ## Estructura
 
 ```
-main.py                  Juego completo (UI + lógica). Se separa en la Fase 2.
+main.py                  Capa de presentación (Flet). Solo dibuja y traduce clics.
+makai/core/              Lógica de juego pura, sin dependencias de UI.
+  cartas.py                Baraja española de 40 cartas.
+  reglas.py                Puntuación y resolución de rondas.
+  partida.py               Máquina de estados de la partida.
+tests/                   Suite de tests (no requiere Flet).
+docs/REGLAS.md           Reglas del juego, con lo confirmado y lo pendiente.
 pyproject.toml           Metadatos y configuración de `flet build`.
 requirements.txt         Dependencias que se empaquetan en el APK.
 requirements-dev.txt     Dependencias solo de escritorio + herramientas.
@@ -68,6 +83,10 @@ assets/Recursos/         Imágenes de cartas y audio.
 tools/                   Scripts auxiliares, no forman parte del juego.
 _local/                  Archivos locales fuera de control de versiones.
 ```
+
+**Regla de arquitectura:** `makai/core/` no puede importar `flet`, `pygame` ni
+ninguna otra librería de UI o audio. Es lo que permite testear las reglas sin
+abrir una ventana, y está verificado por `tests/test_core_sin_ui.py`.
 
 ## Limitaciones conocidas
 
@@ -81,9 +100,12 @@ Estas son las razones por las que el proyecto todavía no es distribuible:
   juego lo importa dentro de un `try/except` y queda mudo. Migración a
   `ft.Audio` pendiente (Fase 3).
 - **La música de fondo se corta en la primera mano** y no se reanuda
-  (se pausa al repartir y nada la reactiva).
-- **Sin tests.** La lógica de puntaje no está verificada.
+  (se pausa al repartir y nada la reactiva). Se corrige junto con la
+  migración a `ft.Audio`.
 - **Layout no responsive.** Cartas de tamaño fijo, pensado para escritorio.
+- **La banca no rota** y el empate siempre la favorece, así que el juego está
+  sesgado en contra del jugador. Ver [docs/REGLAS.md](docs/REGLAS.md).
+- **Sin apuestas.** El Maka'i tradicional se juega apostando.
 - **APK sin firmar.**
 
 ## Licencia

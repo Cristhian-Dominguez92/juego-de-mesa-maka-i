@@ -1,8 +1,15 @@
+"""Punto de entrada del juego: capa de presentación (Flet).
+
+La lógica de juego vive en `makai/core` y no depende de Flet. Este archivo se
+limita a dibujar el estado de una `Partida` y a traducir clics en acciones.
+"""
+
 import asyncio
 import os
-import random
 
 import flet as ft
+
+from makai.core import Carta, Estado, Partida, Resultado
 
 # pygame solo existe en escritorio: en Android no hay wheel disponible, así que
 # el juego debe seguir funcionando (mudo) sin él. Migrar a ft.Audio en la Fase 3.
@@ -26,28 +33,17 @@ DORSO = f"{RECURSOS}/dorso.jpeg"
 MUSICA_FONDO = os.path.join(ASSETS_DIR, RECURSOS, "background_music.mp3")
 SONIDO_VICTORIA = os.path.join(ASSETS_DIR, RECURSOS, "victoria.mp3")
 
-# --- Lógica de Juego ---
-PALOS = ['Oros', 'Copas', 'Espadas', 'Bastos']
-VALORES = ['1', '2', '3', '4', '5', '6', '7', '10', '11', '12']
+TITULO = "¡JAHUGA Maka-'I!"
+
+MENSAJE_RONDA = {
+    Resultado.GANA_JUGADOR: "¡GANASTE ESTA RONDA! 🏆",
+    Resultado.GANA_BANCA: "Gana la PC 🤖",
+    Resultado.EMPATE: "Empate (Banca)",
+}
 
 
-class Carta:
-    def __init__(self, palo, valor):
-        self.palo = palo
-        self.valor = valor
-
-    def get_path(self):
-        p = {'Oros': 'oro', 'Copas': 'copa', 'Espadas': 'espada', 'Bastos': 'basto'}
-        return f"{RECURSOS}/{self.valor}_{p[self.palo]}.jpeg"
-
-
-def calcular_puntaje(mano):
-    figs = ['10', '11', '12']
-    c_figs = sum(1 for c in mano if c.valor in figs)
-    if len(mano) == 3 and c_figs == 3:
-        return 8.5
-    total = sum(10 if c.valor in figs else int(c.valor) for c in mano)
-    return total % 10 if total >= 10 else total
+def ruta_imagen(carta: Carta) -> str:
+    return f"{RECURSOS}/{carta.nombre_archivo}"
 
 
 # --- Aplicación Principal ---
@@ -75,8 +71,7 @@ async def main(page: ft.Page):
         except Exception as e:
             print(f"Error con audio de fondo: {e}")
 
-    # Estado inicial
-    st = {"mazo": [], "m_u": [], "m_p": [], "p_u": 0, "p_p": 0}
+    partida = Partida()
 
     # Función para mostrar pantalla de inicio
     async def mostrar_inicio(e=None):
@@ -128,7 +123,7 @@ async def main(page: ft.Page):
         page.clean()
         play_background_music()
 
-        txt_status = ft.Text("¡JAHUGA Maka-'I!", size=30, weight=ft.FontWeight.BOLD)
+        txt_status = ft.Text(TITULO, size=30, weight=ft.FontWeight.BOLD)
         txt_score = ft.Text("Usuario 0 - 0 PC", size=20, color="yellow")
         row_pc = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=15)
         row_user = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=15)
@@ -193,10 +188,7 @@ async def main(page: ft.Page):
             page.update()
 
         def crear_carta_visual(carta, visible=True):
-            if visible and carta is not None:
-                img_path = carta.get_path()
-            else:
-                img_path = DORSO
+            img_path = ruta_imagen(carta) if visible and carta is not None else DORSO
             return ft.Container(
                 content=ft.Image(src=img_path, width=100, height=150),
                 animate_scale=600,
@@ -205,16 +197,26 @@ async def main(page: ft.Page):
             )
 
         async def actualizar_tablero(revelar_pc=False):
-            row_user.controls = [crear_carta_visual(c) for c in st["m_u"]]
+            row_user.controls = [crear_carta_visual(c) for c in partida.mano_jugador]
             if revelar_pc:
-                row_pc.controls = [crear_carta_visual(c) for c in st["m_p"]]
+                row_pc.controls = [crear_carta_visual(c) for c in partida.mano_banca]
             else:
-                row_pc.controls = [crear_carta_visual(None, visible=False) for _ in st["m_p"]]
+                row_pc.controls = [
+                    crear_carta_visual(None, visible=False) for _ in partida.mano_banca
+                ]
             page.update()
 
         btn_p = ft.Button("PEDIR", disabled=True)
         btn_s = ft.Button("PLANTARSE", disabled=True)
         btn_r = ft.Button("REPARTIR", bgcolor="orange800", color="white")
+
+        def mostrar_marcador():
+            txt_score.value = f"Usuario {partida.puntos_jugador} - {partida.puntos_banca} PC"
+
+        def restaurar_titulo():
+            txt_status.value = TITULO
+            txt_status.color = "white"
+            txt_status.size = 30
 
         async def repartir(e):
             nonlocal audio_bg_playing
@@ -225,84 +227,65 @@ async def main(page: ft.Page):
                 except Exception:
                     pass
 
-            st["mazo"] = [Carta(p, v) for p in PALOS for v in VALORES]
-            random.shuffle(st["mazo"])
-            st["m_u"] = [st["mazo"].pop(), st["mazo"].pop()]
-            st["m_p"] = [st["mazo"].pop(), st["mazo"].pop()]
-            txt_status.value = f"Puntaje: {calcular_puntaje(st['m_u'])}"
+            partida.repartir()
+            txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
             btn_p.disabled, btn_s.disabled, btn_r.disabled = False, False, True
             await actualizar_tablero()
 
         async def pedir(e):
-            st["m_u"].append(st["mazo"].pop())
-            if len(st["m_u"]) >= 3:
-                btn_p.disabled = True
-            txt_status.value = f"Puntaje: {calcular_puntaje(st['m_u'])}"
+            partida.pedir()
+            btn_p.disabled = not partida.jugador_puede_pedir
+            txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
             await actualizar_tablero()
 
         async def plantarse(e):
             btn_p.disabled, btn_s.disabled = True, True
-            while calcular_puntaje(st["m_p"]) < 6 and len(st["m_p"]) < 3:
+            partida.plantarse()
+
+            while partida.banca_debe_pedir():
                 txt_status.value = "PC pensando..."
                 page.update()
                 await asyncio.sleep(0.7)
-                st["m_p"].append(st["mazo"].pop())
+                partida.banca_pide()
 
-            pu, pp = calcular_puntaje(st["m_u"]), calcular_puntaje(st["m_p"])
-            if pu > pp:
-                res = "¡GANASTE ESTA RONDA! 🏆"
-                st["p_u"] += 1
-            elif pp > pu:
-                res = "Gana la PC 🤖"
-                st["p_p"] += 1
-            else:
-                res = "Empate (Banca)"
-                st["p_p"] += 1
-
-            txt_status.value = res
-            txt_score.value = f"Usuario {st['p_u']} - {st['p_p']} PC"
+            ronda = partida.resolver_ronda()
+            txt_status.value = MENSAJE_RONDA[ronda.resultado]
+            mostrar_marcador()
             await actualizar_tablero(revelar_pc=True)
 
-            if res.startswith("¡GANASTE"):
+            if ronda.resultado is Resultado.GANA_JUGADOR:
                 await asyncio.gather(_sonido_victoria(), _animar_victoria())
 
             await asyncio.sleep(1.5)
 
-            if st["p_u"] >= 10:
-                txt_status.value = "🏆 ¡FELICIDADES, ACABAS DE GANAR LA PARTIDA! 🏆"
-                txt_status.color = "gold"
+            if ronda.partida_terminada:
+                if ronda.gano_el_jugador:
+                    txt_status.value = "🏆 ¡FELICIDADES, ACABAS DE GANAR LA PARTIDA! 🏆"
+                    txt_status.color = "gold"
+                else:
+                    txt_status.value = "😢 PERDISTE, ¡VUELVE A INTENTARLO!"
+                    txt_status.color = "red"
                 txt_status.size = 28
                 page.update()
                 await asyncio.sleep(3)
-                st["p_u"] = 0
-                st["p_p"] = 0
-                txt_score.value = f"Usuario {st['p_u']} - {st['p_p']} PC"
-                txt_status.value = "¡JAHUGA Maka-'I!"
-                txt_status.color = "white"
-                txt_status.size = 30
-                btn_r.disabled = False
-                page.update()
-            elif st["p_p"] >= 10:
-                txt_status.value = "😢 PERDISTE, ¡VUELVE A INTENTARLO!"
-                txt_status.color = "red"
-                txt_status.size = 28
-                page.update()
-                await asyncio.sleep(3)
-                st["p_u"] = 0
-                st["p_p"] = 0
-                txt_score.value = f"Usuario {st['p_u']} - {st['p_p']} PC"
-                txt_status.value = "¡JAHUGA Maka-'I!"
-                txt_status.color = "white"
-                txt_status.size = 30
-                btn_r.disabled = False
-                page.update()
+
+                partida.reiniciar()
+                mostrar_marcador()
+                restaurar_titulo()
             else:
-                btn_r.disabled = False
-                page.update()
+                partida.nueva_ronda()
+
+            btn_r.disabled = False
+            page.update()
 
         btn_p.on_click = pedir
         btn_s.on_click = plantarse
         btn_r.on_click = repartir
+
+        # La partida puede venir de una sesión anterior de esta pantalla.
+        if partida.estado is not Estado.ESPERANDO_REPARTO:
+            partida.reiniciar()
+        mostrar_marcador()
 
         buttons_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER)
         buttons_row.controls = [btn_p, btn_s, btn_r]
