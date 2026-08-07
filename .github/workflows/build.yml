@@ -48,11 +48,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      # El core no depende de flet ni de pygame: los tests corren solo con
-      # pytest. Si algún día hiciera falta más, es señal de que se filtró una
-      # dependencia de UI dentro de makai/core.
-      - name: Install pytest
-        run: pip install pytest==9.1.1
+      # `flet` a secas alcanza para construir controles y así detectar cambios
+      # incompatibles de su API (no hace falta flet-desktop ni flet-web). Sin
+      # él, tests/test_ui_flujo.py se saltaría en silencio y el CI daría verde
+      # con el juego roto.
+      - name: Install test dependencies
+        run: pip install pytest==9.1.1 flet==0.28.3
 
       - name: Run tests
         run: pytest -q

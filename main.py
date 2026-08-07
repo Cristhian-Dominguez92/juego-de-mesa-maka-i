@@ -110,8 +110,10 @@ async def main(page: ft.Page):
 
         welcome_col = ft.Column(
             [txt_welcome, txt_game_name, txt_subtitle, ft.Divider(height=40), btn_start],
+            # En una Column el eje principal es el vertical, asi que el centrado
+            # vertical va en `alignment`. `vertical_alignment` solo existe en Row.
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            vertical_alignment=ft.MainAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
             spacing=20,
         )
 

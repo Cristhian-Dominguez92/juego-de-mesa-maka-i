@@ -52,8 +52,22 @@ firma se configura en `[tool.flet.android.signing]` dentro de `pyproject.toml`.
 pytest -q
 ```
 
-El core no depende de Flet, así que los tests corren sin instalar la UI: basta
-con `pip install pytest`.
+Para el ciclo rápido, saltando los que juegan partidas completas:
+
+```bash
+pytest -q -m "not lento"
+```
+
+Los tests de `makai/core/` no necesitan Flet. Los de `tests/test_ui_flujo.py`
+sí (se saltan solos si no está instalado): construyen los controles reales de
+`main.py` contra un `Page` falso, que es lo que detecta cambios incompatibles
+en la API de Flet.
+
+> **Si la suite tarda minutos en Windows**, casi siempre es el antivirus
+> escaneando el import de `flet` (`flet.core.icons` es un módulo enorme). Los
+> tests en sí tardan segundos; el costo está en el import. Agregar el
+> directorio del proyecto y el del venv a las exclusiones de Windows Defender
+> lo resuelve.
 
 ## Reglas del juego
 

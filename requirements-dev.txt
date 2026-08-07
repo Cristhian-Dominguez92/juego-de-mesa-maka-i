@@ -1,6 +1,11 @@
 # Dependencias solo para desarrollo en escritorio. NO se empaquetan en el APK.
 -r requirements.txt
 
+# El paquete `flet` a secas no trae el cliente nativo: sin este extra,
+# `python main.py` falla al intentar abrir la ventana. No hace falta para
+# `flet build apk` ni para correr los tests.
+flet[desktop]==0.28.3
+
 # Audio en escritorio. pygame no está disponible en Android: el juego lo importa
 # dentro de un try/except y funciona sin él. Se elimina en la Fase 3, cuando el
 # audio migre a ft.Audio (incluido en flet 0.28.3, no requiere paquete extra).

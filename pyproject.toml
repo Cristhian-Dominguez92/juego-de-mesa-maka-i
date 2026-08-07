@@ -52,3 +52,6 @@ quote-style = "preserve"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "lento: juega partidas completas contra la UI; usar `-m 'not lento'` para saltarlos",
+]
