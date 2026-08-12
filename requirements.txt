@@ -6,3 +6,7 @@
 # `ft.app(target=...)` fue reemplazado por `ft.run(...)`. Este proyecto usa la
 # API 0.x, por lo que la versión queda fijada. No subir sin migrar el código.
 flet==0.28.3
+
+# Plugin Flutter del control de audio. Sin esto el APK no puede
+# reproducir sonido: el control se renderiza como error.
+flet-audio==0.1.0

@@ -1,18 +1,18 @@
-"""Audio del juego sobre ft.Audio.
+"""Audio del juego, sobre el paquete flet-audio.
 
 Reemplaza a pygame, que no tiene wheel para Android y dejaba el juego mudo en
-el APK. ft.Audio viene incluido en flet 0.28.3 (no requiere paquete extra) y se
-empaqueta junto con la aplicación.
+el APK.
 
-`ReleaseMode` no está exportado como `ft.ReleaseMode`: hay que importarlo desde
-`flet.core.audio`.
+**Por qué `flet_audio` y no `ft.Audio`.** El control incorporado está obsoleto
+desde flet 0.26 y su parte Flutter ya no viene en el paquete base: en el APK se
+renderizaba como un recuadro rojo con "Unknown control: audio", que además
+tapaba media pantalla. El paquete `flet-audio` trae el plugin Flutter, y
+`flet build` lo registra al encontrarlo entre las dependencias del proyecto.
+Por eso tiene que estar en `[project].dependencies` de pyproject.toml, no solo
+instalado en el entorno.
 
-MIGRACIÓN PENDIENTE: `ft.Audio` está marcado como obsoleto desde flet 0.26 y
-desaparece en 0.29, cuando pasa al paquete `flet-audio`. En 0.28.3 sigue siendo
-la única opción: `flet-audio` no publica versiones 0.28.x (salta de 0.1.0 a
-0.80.0, ya para la línea 1.0). Al subir de versión de Flet hay que cambiar a
-`import flet_audio` y agregar el paquete a las dependencias de pyproject.toml
-para que `flet build` incluya el plugin.
+`ReleaseMode` no se exporta en `flet_audio/__init__.py`: hay que importarlo del
+submódulo.
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ from __future__ import annotations
 import os
 
 import flet as ft
-from flet.core.audio import ReleaseMode
+from flet_audio import Audio
+from flet_audio.audio import ReleaseMode
 
 #: Clave en client_storage donde se recuerda si el jugador silenció el juego.
 CLAVE_SILENCIO = "makai.audio.silenciado"
@@ -69,7 +70,7 @@ class GestorAudio:
         self._musica_sonando = False
 
         self.musica = (
-            ft.Audio(
+            Audio(
                 src=musica_src,
                 autoplay=False,
                 volume=0.0 if self.silenciado else VOLUMEN_MUSICA,
@@ -79,7 +80,7 @@ class GestorAudio:
             else None
         )
         self.victoria = (
-            ft.Audio(
+            Audio(
                 src=victoria_src,
                 autoplay=False,
                 volume=0.0 if self.silenciado else VOLUMEN_EFECTOS,
@@ -125,7 +126,7 @@ class GestorAudio:
 
     # --- Internos ------------------------------------------------------------
 
-    def _controles(self) -> list[ft.Audio]:
+    def _controles(self) -> list[Audio]:
         return [c for c in (self.musica, self.victoria) if c is not None]
 
     def _leer_preferencia(self) -> bool:

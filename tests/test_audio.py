@@ -111,13 +111,13 @@ def test_sin_archivos_no_se_crea_ningun_control():
 
 
 def test_la_musica_se_configura_en_bucle(gestor):
-    from flet.core.audio import ReleaseMode
+    from flet_audio.audio import ReleaseMode
 
     assert gestor.musica.release_mode == ReleaseMode.LOOP.value
 
 
 def test_el_efecto_de_victoria_no_se_repite(gestor):
-    from flet.core.audio import ReleaseMode
+    from flet_audio.audio import ReleaseMode
 
     assert gestor.victoria.release_mode == ReleaseMode.RELEASE.value
 

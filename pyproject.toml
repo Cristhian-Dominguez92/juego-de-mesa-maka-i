@@ -10,9 +10,13 @@ authors = [{ name = "Cristhian Domínguez" }]
 # IMPORTANTE: estas dependencias son las que se empaquetan dentro del APK.
 # No agregues aquí librerías que sean solo de escritorio: no compilan para
 # Android y rompen `flet build apk`. Para eso está requirements-dev.txt.
-# El audio usa ft.Audio, incluido en flet: no hace falta nada más.
+#
+# flet-audio TIENE que estar acá y no solo instalado en el entorno: `flet build`
+# registra las extensiones Flutter a partir de esta lista. Sin él, el APK
+# muestra "Unknown control: audio" en un recuadro rojo que tapa media pantalla.
 dependencies = [
     "flet==0.28.3",
+    "flet-audio==0.1.0",
 ]
 
 # --- Configuración de `flet build` -------------------------------------------
@@ -92,10 +96,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "lento: juega partidas completas contra la UI; usar `-m 'not lento'` para saltarlos",
-]
-filterwarnings = [
-    # ft.Audio es obsoleto desde flet 0.26, pero en 0.28.3 es la unica opcion:
-    # flet-audio no publica versiones 0.28.x. Ver makai/ui/audio.py. Se silencia
-    # solo este mensaje para que no tape avisos que si importan.
-    "ignore:Audio\\(\\) is deprecated:DeprecationWarning",
 ]
