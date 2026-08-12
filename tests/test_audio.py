@@ -116,10 +116,17 @@ def test_la_musica_se_configura_en_bucle(gestor):
     assert gestor.musica.release_mode == ReleaseMode.LOOP.value
 
 
-def test_el_efecto_de_victoria_no_se_repite(gestor):
+def test_el_efecto_de_victoria_queda_listo_para_repetirse(gestor):
+    """Regresion: con RELEASE el sonido de victoria no sonaba en el APK.
+
+    audioplayers libera el reproductor y descarta la fuente al terminar, y el
+    "play" del plugin es un seek(0) + resume() que sobre un reproductor
+    liberado no hace nada. STOP conserva la fuente.
+    """
     from flet_audio.audio import ReleaseMode
 
-    assert gestor.victoria.release_mode == ReleaseMode.RELEASE.value
+    assert gestor.victoria.release_mode == ReleaseMode.STOP.value
+    assert gestor.victoria.release_mode != ReleaseMode.RELEASE.value
 
 
 # --- Silencio -----------------------------------------------------------------
@@ -217,3 +224,74 @@ def test_un_fallo_de_reproduccion_no_tumba_el_juego(gestor):
 
     gestor.iniciar_musica()
     gestor.sonar_victoria()
+
+
+# --- Registro tras cambiar de pantalla ----------------------------------------
+# Regresion: page.clean() recorre todos los hijos de la pagina —el overlay
+# incluido— y los da de baja del lado del cliente. Reproducir con el control
+# desregistrado no hace nada.
+
+
+class PageConClean(PageStub):
+    def __init__(self):
+        super().__init__()
+        self.updates = 0
+
+    def clean(self):
+        # Imita a Flet: los objetos siguen en la lista de Python.
+        pass
+
+    def update(self):
+        self.updates += 1
+
+
+def test_registrar_repone_los_controles_en_el_overlay():
+    page = PageConClean()
+    g = GestorAudio(page, musica_src="a.mp3", victoria_src="b.mp3")
+
+    page.overlay.clear()  # como si se hubieran perdido
+    g.registrar()
+
+    assert len(page.overlay) == 2
+    assert g.musica in page.overlay
+    assert g.victoria in page.overlay
+
+
+def test_registrar_no_duplica_controles():
+    page = PageConClean()
+    g = GestorAudio(page, musica_src="a.mp3", victoria_src="b.mp3")
+
+    g.registrar()
+    g.registrar()
+
+    assert len(page.overlay) == 2
+
+
+def test_registrar_sincroniza_la_pagina():
+    page = PageConClean()
+    g = GestorAudio(page, musica_src="a.mp3")
+    antes = page.updates
+    g.registrar()
+    assert page.updates > antes
+
+
+def test_tras_registrar_la_musica_vuelve_a_arrancar():
+    """Al cambiar de pantalla el control se recrea: hay que volver a tocar."""
+    page = PageConClean()
+    g = GestorAudio(page, musica_src="a.mp3")
+    llamadas = []
+    g.musica.play = lambda: llamadas.append("play")
+
+    g.iniciar_musica()
+    g.iniciar_musica()
+    assert llamadas == ["play"]
+
+    g.registrar()
+    g.iniciar_musica()
+    assert llamadas == ["play", "play"], "no se reanudo tras cambiar de pantalla"
+
+
+def test_registrar_funciona_sin_archivos_de_audio():
+    page = PageConClean()
+    GestorAudio(page).registrar()
+    assert page.overlay == []

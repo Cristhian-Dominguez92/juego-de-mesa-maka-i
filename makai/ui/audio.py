@@ -79,12 +79,17 @@ class GestorAudio:
             if musica_src
             else None
         )
+        # STOP y no RELEASE: con RELEASE, audioplayers libera el reproductor y
+        # descarta la fuente al terminar la reproducción, y el "play" del plugin
+        # es un `seek(0)` seguido de `resume()`, que sobre un reproductor
+        # liberado no hace nada. Con STOP el sonido queda listo para volver a
+        # dispararse.
         self.victoria = (
             Audio(
                 src=victoria_src,
                 autoplay=False,
                 volume=0.0 if self.silenciado else VOLUMEN_EFECTOS,
-                release_mode=ReleaseMode.RELEASE,
+                release_mode=ReleaseMode.STOP,
             )
             if victoria_src
             else None
@@ -92,6 +97,20 @@ class GestorAudio:
 
         for control in self._controles():
             page.overlay.append(control)
+
+    def registrar(self) -> None:
+        """Vuelve a poner los controles en el overlay y los sincroniza.
+
+        `page.clean()` recorre todos los hijos de la página —el overlay
+        incluido— y los da de baja del lado del cliente, aunque la lista de
+        Python siga teniéndolos. Hay que llamar a esto después de cada cambio
+        de pantalla, antes de reproducir nada.
+        """
+        for control in self._controles():
+            if control not in self.page.overlay:
+                self.page.overlay.append(control)
+        self._musica_sonando = False
+        self._intentar(self.page.update)
 
     # --- Reproducción --------------------------------------------------------
 
@@ -145,12 +164,14 @@ class GestorAudio:
 
     @staticmethod
     def _intentar(accion) -> None:
-        """Ejecuta una acción de audio ignorando fallos de reproducción.
+        """Ejecuta una acción de audio sin dejar que un fallo tumbe el juego.
 
-        Un archivo faltante o un dispositivo sin salida de sonido no deben
-        tumbar el juego.
+        Un archivo faltante o un dispositivo sin salida de sonido no son
+        motivo para cortar la partida, pero **sí se informan**: cuando esto
+        callaba por completo, que el sonido de victoria no sonara en el APK no
+        dejaba ningún rastro que permitiera diagnosticarlo.
         """
         try:
             accion()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[audio] fallo {getattr(accion, '__name__', accion)}: {e!r}")

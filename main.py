@@ -209,7 +209,9 @@ async def main(page: ft.Page):
     # Función para mostrar el juego principal
     async def mostrar_juego(e=None):
         page.clean()
-        audio.iniciar_musica()
+        # La música se arranca al final, cuando la pantalla ya está montada:
+        # `page.clean()` da de baja los controles del overlay y reproducir con
+        # el control desregistrado no hace nada.
 
         pc_revelada = False
 
@@ -511,6 +513,11 @@ async def main(page: ft.Page):
         root_col.controls[-1] = buttons_row
         page.add(ft.SafeArea(content=root_box, expand=True))
         page.update()
+
+        # Recién ahora, con la pantalla montada y los controles de audio dados
+        # de alta otra vez, tiene sentido reproducir.
+        audio.registrar()
+        audio.iniciar_musica()
 
     # Mostrar pantalla de inicio al cargar
     await mostrar_inicio()
