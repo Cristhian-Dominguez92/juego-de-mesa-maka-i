@@ -48,12 +48,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      # `flet` a secas alcanza para construir controles y así detectar cambios
-      # incompatibles de su API (no hace falta flet-desktop ni flet-web). Sin
-      # él, tests/test_ui_flujo.py se saltaría en silencio y el CI daría verde
-      # con el juego roto.
+      # Se instalan las dependencias reales del juego, no una lista aparte.
+      # Cuando estaban duplicadas acá, agregar flet-audio al proyecto dejó el CI
+      # sin ese paquete y los tests fallaron al importar. Con requirements.txt
+      # no puede volver a desincronizarse.
+      #
+      # No hacen falta flet-desktop ni flet-web: alcanza con poder construir los
+      # controles. Pero sí hace falta que estén todos los que el código importa,
+      # o tests/test_ui_flujo.py se saltaría en silencio y el CI daría verde con
+      # el juego roto.
       - name: Install test dependencies
-        run: pip install pytest==9.1.1 flet==0.28.3
+        run: pip install -r requirements.txt pytest==9.1.1
 
       - name: Run tests
         run: pytest -q
