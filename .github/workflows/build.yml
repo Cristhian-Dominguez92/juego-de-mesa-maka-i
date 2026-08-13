@@ -117,13 +117,20 @@ jobs:
           FLET_ANDROID_SIGNING_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           FLET_ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          # --no-rich-output es imprescindible en CI: sin él, flet imprime cada
+          # cuadro del spinner como una línea nueva y el error real queda
+          # sepultado bajo cientos de repeticiones.
+          COMUNES="--verbose --no-rich-output"
+
           if [ -f upload-keystore.jks ]; then
-            flet build apk --verbose \
-              --android-signing-key-store upload-keystore.jks \
+            # Ruta ABSOLUTA: Gradle corre desde un subdirectorio del build, así
+            # que una ruta relativa no resuelve al mismo archivo.
+            flet build apk $COMUNES \
+              --android-signing-key-store "$GITHUB_WORKSPACE/upload-keystore.jks" \
               --android-signing-key-alias upload
           else
             echo "::warning::Sin keystore: el APK sale SIN FIRMAR y no es publicable."
-            flet build apk --verbose
+            flet build apk $COMUNES
           fi
 
       # El keystore es una clave privada: no debe sobrevivir al job ni terminar
