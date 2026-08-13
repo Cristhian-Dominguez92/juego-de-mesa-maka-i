@@ -345,3 +345,46 @@ def test_la_misma_semilla_reproduce_la_misma_ronda():
     ra, rb = jugar_ronda(a), jugar_ronda(b)
     assert [j.mano for j in a.jugadores] == [j.mano for j in b.jugadores]
     assert ra.ganador.nombre == rb.ganador.nombre
+
+
+# --- Reparto parejo ------------------------------------------------------------
+# Regresion: en la mesa parecia que a algunos se les repartian tres cartas de
+# entrada. El reparto es parejo; la tercera sale de un "carta y pie".
+
+
+def test_nadie_recibe_tres_cartas_en_el_reparto():
+    for semilla in range(25):
+        p = nueva(semilla)
+        p.repartir()
+        repartidas = {j.nombre: len(j.mano) for j in p.en_ronda}
+        assert set(repartidas.values()) == {CARTAS_INICIALES}, (
+            f"reparto disparejo con semilla {semilla}: {repartidas}"
+        )
+
+
+def test_la_tercera_carta_solo_llega_por_declaracion():
+    p = nueva()
+    p.repartir()
+    assert all(len(j.mano) == CARTAS_INICIALES for j in p.en_ronda)
+
+    jugador = p.declarar(Declaracion.PLANTO)
+    assert len(jugador.mano) == CARTAS_INICIALES, "plantarse no debe dar carta"
+
+    jugador = p.declarar(Declaracion.CARTA)
+    assert len(jugador.mano) == CARTAS_INICIALES + 1
+
+
+def test_el_reparto_del_desempate_tambien_es_parejo():
+    p = nueva()
+    p.repartir()
+    p.jugadores[0].mano = [Carta(Palo.OROS, 4), Carta(Palo.COPAS, 5)]
+    p.jugadores[1].mano = [Carta(Palo.ESPADAS, 7), Carta(Palo.BASTOS, 2)]
+    p.jugadores[2].mano = [Carta(Palo.OROS, 1), Carta(Palo.COPAS, 1)]
+    p.jugadores[3].mano = [Carta(Palo.ESPADAS, 1), Carta(Palo.BASTOS, 2)]
+    declarar_todos(p)
+    r = p.resolver_ronda()
+
+    assert r.hubo_desempate
+    for nombre in r.empatados:
+        jugador = next(j for j in p.jugadores if j.nombre == nombre)
+        assert len(jugador.mano) == CARTAS_INICIALES

@@ -9,7 +9,7 @@ import asyncio
 import flet as ft
 
 from makai.ai import Dificultad, estrategia_para
-from makai.core import Carta, Estado, Partida, Resultado, Rol
+from makai.core import Carta, Estado, Partida, Resultado, Rol, jere
 from makai.ui import animacion, layout, textos
 from makai.ui import estadisticas as stats
 from makai.ui import personajes as pj
@@ -176,6 +176,10 @@ async def main(page: ft.Page):
     estadisticas = stats.cargar(almacen)
     dificultad = cargar_dificultad(almacen)
     personaje = pj.cargar(almacen)
+    # Jere: cuántos se sientan a la mesa. Los rivales toman personajes
+    # prestados, así que no puede haber más jugadores que personajes.
+    maximo_jere = min(jere.MAXIMO_JUGADORES, len(pj.PERSONAJES))
+    cantidad_jere = jere.MINIMO_JUGADORES
     partida = Partida(estrategia_pc=estrategia_para(dificultad))
 
     # Función para mostrar pantalla de inicio
@@ -229,6 +233,8 @@ async def main(page: ft.Page):
         btn_start.data = "btn_jugar"
         btn_reglas = boton_menu("CÓMO SE JUEGA", AZUL, mostrar_reglas, ancho_boton)
         btn_reglas.data = "btn_reglas"
+        btn_jere = boton_menu("MAKA'I JERE", AZUL, mostrar_jere, ancho_boton)
+        btn_jere.data = "btn_jere"
         btn_personaje = boton_menu("MI PERSONAJE", ROJO, mostrar_personajes, ancho_boton)
         btn_personaje.data = "btn_personaje"
 
@@ -237,6 +243,7 @@ async def main(page: ft.Page):
                 titulo,
                 ft.Container(height=18),
                 btn_start,
+                btn_jere,
                 btn_personaje,
                 btn_reglas,
                 ft.Container(height=6),
@@ -345,6 +352,310 @@ async def main(page: ft.Page):
         )
         page.add(ft.SafeArea(content=fondo, expand=True))
         page.update()
+
+    # --- Maka'i Jere: de cuatro para arriba, sin banca y con pozo al centro ---
+    async def mostrar_jere(e=None):
+        nonlocal cantidad_jere
+        page.clean()
+        page.bgcolor = MADERA_BASE
+        page.on_resized = None
+
+        # Los rivales toman prestados los personajes que el jugador no usa.
+        rivales = [p for p in pj.PERSONAJES if p != personaje][: cantidad_jere - 1]
+        nombres = [personaje.nombre] + [r.nombre for r in rivales]
+        caras = {personaje.nombre: personaje} | {r.nombre: r for r in rivales}
+
+        partida_jere = jere.PartidaJere(nombres, estrategia_pc=estrategia_para(dificultad))
+
+        txt_pozo = ft.Text(
+            "",
+            size=layout.tamano_texto(22, page.width),
+            weight=ft.FontWeight.BOLD,
+            color="amber300",
+            data="pozo_jere",
+        )
+        txt_aviso = ft.Text(
+            "",
+            size=layout.tamano_texto(15, page.width),
+            weight=ft.FontWeight.BOLD,
+            color=BLANCO,
+            text_align=ft.TextAlign.CENTER,
+            data="aviso_jere",
+        )
+        txt_apuesta = ft.Text(color=BLANCO, data="apuesta_jere")
+        txt_fichas = ft.Text(color="amber300", weight=ft.FontWeight.BOLD, data="fichas_jere")
+        col_rivales = ft.Column(spacing=6, data="rivales_jere")
+        row_mano = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=layout.SEPARACION_CARTAS,
+            data="mano_jere",
+        )
+
+        btn_carta = ft.Button("CARTA Y PIE", disabled=True, data="btn_carta_pie")
+        btn_planto = ft.Button("PLANTO Y PIE", disabled=True, data="btn_planto_pie")
+        btn_repartir = ft.Button(
+            "REPARTIR", bgcolor="orange800", color=BLANCO, data="btn_repartir_jere"
+        )
+        btn_menos = ft.IconButton(icon=ft.Icons.REMOVE, icon_color=BLANCO, data="jere_menos")
+        btn_mas = ft.IconButton(icon=ft.Icons.ADD, icon_color=BLANCO, data="jere_mas")
+
+        async def cambiar_cantidad(e):
+            nonlocal cantidad_jere
+            cantidad_jere = int(dd_cantidad.value)
+            # La mesa cambia de tamaño: se rearma la pantalla entera.
+            await mostrar_jere()
+
+        dd_cantidad = ft.Dropdown(
+            label="Jugadores",
+            value=str(cantidad_jere),
+            options=[
+                ft.DropdownOption(key=str(n), text=f"{n} jugadores")
+                for n in range(jere.MINIMO_JUGADORES, maximo_jere + 1)
+            ],
+            on_change=cambiar_cantidad,
+            width=150,
+            border_color=BLANCO,
+            color=BLANCO,
+            data="cantidad_jere",
+        )
+
+        def panel(hijo):
+            return ft.Container(
+                content=hijo,
+                bgcolor=ft.Colors.with_opacity(0.45, ft.Colors.BLACK),
+                border_radius=10,
+                padding=8,
+            )
+
+        def carta_visual(carta, visible):
+            # Con cuatro o más manos en pantalla las cartas van más chicas.
+            ancho = layout.ancho_de_carta(page.width) * 0.62
+            return ft.Image(
+                src=ruta_imagen(carta) if visible and carta else DORSO,
+                width=ancho,
+                height=layout.alto_de_carta(ancho),
+                fit=ft.ImageFit.CONTAIN,
+            )
+
+        def fila_rival(jugador):
+            cara = caras[jugador.nombre]
+            turno = partida_jere.turno
+            es_turno = turno is not None and turno.nombre == jugador.nombre
+            revelar = partida_jere.estado in (
+                jere.Estado.RONDA_TERMINADA,
+                jere.Estado.PARTIDA_TERMINADA,
+            )
+            detalle = f"{jugador.fichas} 🪙"
+            if jugador.declaracion:
+                detalle += f"  ·  {jugador.declaracion.value}"
+
+            return panel(
+                ft.Row(
+                    [
+                        ft.Image(src=ruta_personaje(cara), width=32, height=32),
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    jugador.nombre,
+                                    color="amber300" if es_turno else BLANCO,
+                                    weight=ft.FontWeight.BOLD,
+                                    size=13,
+                                ),
+                                ft.Text(detalle, color="white70", size=11),
+                            ],
+                            spacing=0,
+                            tight=True,
+                        ),
+                        ft.Row(
+                            [carta_visual(c, revelar) for c in jugador.mano],
+                            spacing=4,
+                            tight=True,
+                        ),
+                    ],
+                    spacing=8,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+            )
+
+        def dibujar():
+            col_rivales.controls = [
+                fila_rival(j)
+                for j in partida_jere.jugadores
+                if not j.es_humano and (j.sigue_en_partida or j.mano)
+            ]
+
+            humano = partida_jere.humano
+            row_mano.controls = [carta_visual(c, True) for c in humano.mano]
+
+            txt_pozo.value = f"POZO  {partida_jere.pozo} 🪙"
+            txt_apuesta.value = f"Cada uno pone {partida_jere.apuesta} 🪙"
+            txt_fichas.value = f"{humano.fichas} 🪙"
+
+            entre_rondas = partida_jere.estado is jere.Estado.ESPERANDO_REPARTO
+            btn_menos.disabled = not entre_rondas or partida_jere.apuesta <= 1
+            btn_mas.disabled = (
+                not entre_rondas or partida_jere.apuesta >= partida_jere.apuesta_maxima
+            )
+            btn_repartir.disabled = not entre_rondas
+            dd_cantidad.disabled = not entre_rondas
+
+            mi_turno = partida_jere.es_turno_del_humano
+            btn_carta.disabled = not (mi_turno and humano.puede_pedir)
+            btn_planto.disabled = not mi_turno
+            if mi_turno:
+                txt_aviso.value = "Te toca: ¿carta o planto?"
+            page.update()
+
+        async def correr_turnos_de_la_pc():
+            """Las PC declaran una por una, cantando en voz alta.
+
+            Sin anunciar cada canto, las cartas que piden aparecen boca abajo
+            sin explicación y parece que se hubiera repartido de más. Todos
+            reciben dos: la tercera sale de un `carta y pie`.
+            """
+            while partida_jere.turno is not None and not partida_jere.es_turno_del_humano:
+                quien = partida_jere.turno.nombre
+                await asyncio.sleep(0.9)
+                declaracion = partida_jere.declaracion_de_la_pc()
+                partida_jere.declarar(declaracion)
+                txt_aviso.value = f"{quien}: {declaracion.value}"
+                dibujar()
+                await asyncio.sleep(0.4)
+
+        async def cerrar_ronda():
+            resultado = partida_jere.resolver_ronda()
+
+            if resultado.hubo_desempate:
+                txt_aviso.value = f"Empate entre {', '.join(resultado.empatados)} — desempate"
+                dibujar()
+                await asyncio.sleep(1.6)
+
+            gano_el_humano = resultado.ganador.es_humano
+            txt_aviso.value = (
+                f"¡Te llevás el pozo de {resultado.pozo} 🪙!"
+                if gano_el_humano
+                else f"{resultado.ganador.nombre} se lleva {resultado.pozo} 🪙"
+            )
+            if gano_el_humano:
+                audio.sonar_victoria()
+            dibujar()
+            await asyncio.sleep(1.8)
+
+            if resultado.partida_terminada:
+                txt_aviso.value = (
+                    "🏆 ¡GANASTE LA PARTIDA!"
+                    if gano_el_humano
+                    else f"Ganó {resultado.ganador.nombre}. ¡Otra vez será!"
+                )
+                dibujar()
+                await asyncio.sleep(2.5)
+                partida_jere.reiniciar()
+                txt_aviso.value = ""
+            else:
+                partida_jere.nueva_ronda()
+            dibujar()
+
+        async def seguir_hasta_el_final():
+            await correr_turnos_de_la_pc()
+            if partida_jere.turno is None and partida_jere.estado is jere.Estado.DECLARANDO:
+                await cerrar_ronda()
+
+        async def repartir(e):
+            if partida_jere.estado is not jere.Estado.ESPERANDO_REPARTO:
+                return
+            audio.sonar_barajeo()
+            txt_aviso.value = "Dos cartas para cada uno"
+            partida_jere.repartir()
+            dibujar()
+            await asyncio.sleep(0.7)
+            await seguir_hasta_el_final()
+
+        async def declarar(declaracion):
+            if not partida_jere.es_turno_del_humano:
+                return
+            partida_jere.declarar(declaracion)
+            txt_aviso.value = f"{personaje.nombre}: {declaracion.value}"
+            dibujar()
+            await asyncio.sleep(0.4)
+            await seguir_hasta_el_final()
+
+        async def pedir_carta(e):
+            await declarar(jere.Declaracion.CARTA)
+
+        async def plantarse(e):
+            await declarar(jere.Declaracion.PLANTO)
+
+        async def cambiar_apuesta(delta):
+            if partida_jere.estado is not jere.Estado.ESPERANDO_REPARTO:
+                return
+            objetivo = max(1, min(partida_jere.apuesta + delta, partida_jere.apuesta_maxima))
+            partida_jere.apostar(objetivo)
+            dibujar()
+
+        async def subir(e):
+            await cambiar_apuesta(PASO_APUESTA)
+
+        async def bajar(e):
+            await cambiar_apuesta(-PASO_APUESTA)
+
+        btn_repartir.on_click = repartir
+        btn_carta.on_click = pedir_carta
+        btn_planto.on_click = plantarse
+        btn_menos.on_click = bajar
+        btn_mas.on_click = subir
+
+        contenido = ft.Column(
+            [
+                ft.Row(
+                    [
+                        panel(txt_pozo),
+                        dd_cantidad,
+                        ft.Button("MENÚ", on_click=mostrar_inicio, data="btn_menu_jere"),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    wrap=True,
+                ),
+                col_rivales,
+                panel(txt_aviso),
+                row_mano,
+                panel(
+                    ft.Row(
+                        [
+                            ft.Image(src=ruta_personaje(personaje), width=32, height=32),
+                            ft.Text(personaje.nombre, color=BLANCO, weight=ft.FontWeight.BOLD),
+                            txt_fichas,
+                        ],
+                        spacing=8,
+                        tight=True,
+                    )
+                ),
+                ft.Row(
+                    [btn_menos, txt_apuesta, btn_mas],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=4,
+                ),
+                ft.Row(
+                    [btn_carta, btn_planto, btn_repartir],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    wrap=True,
+                    spacing=8,
+                ),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        mesa = ft.Container(
+            content=ft.Container(content=contenido, padding=14),
+            image=ft.DecorationImage(src=MESA_MADERA, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+        )
+        page.add(ft.SafeArea(content=mesa, expand=True))
+        dibujar()
+        audio.registrar()
+        audio.iniciar_musica()
 
     # Pantalla de reglas
     async def mostrar_reglas(e=None):

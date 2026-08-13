@@ -947,3 +947,134 @@ def test_el_rival_nunca_es_el_mismo_que_el_jugador(sin_esperas):
 
         visibles = asyncio.run(flujo())
         assert visibles.count(elegido.nombre) == 1, f"{elegido.nombre} aparece dos veces"
+
+
+# --- Maka'i Jere --------------------------------------------------------------
+
+
+class MesaJere:
+    def __init__(self, page):
+        self.page = page
+        self.pozo = buscar(page, "pozo_jere")
+        self.aviso = buscar(page, "aviso_jere")
+        self.apuesta = buscar(page, "apuesta_jere")
+        self.fichas = buscar(page, "fichas_jere")
+        self.rivales = buscar(page, "rivales_jere")
+        self.mano = buscar(page, "mano_jere")
+        self.carta = buscar(page, "btn_carta_pie")
+        self.planto = buscar(page, "btn_planto_pie")
+        self.repartir = buscar(page, "btn_repartir_jere")
+        self.cantidad = buscar(page, "cantidad_jere")
+        self.menu = buscar(page, "btn_menu_jere")
+
+
+async def abrir_jere(almacenamiento=None):
+    menu = await abrir_menu(almacenamiento=almacenamiento)
+    boton = buscar(menu.page, "btn_jere")
+    assert boton.text == "MAKA'I JERE"
+    await boton.on_click(None)
+    return MesaJere(menu.page)
+
+
+async def jugar_mano_jere(mesa, declaracion="planto"):
+    await mesa.repartir.on_click(None)
+    # Puede que la PC declare primero; se responde cuando toque.
+    for _ in range(10):
+        if mesa.planto.disabled and mesa.carta.disabled:
+            break
+        boton = mesa.carta if declaracion == "carta" else mesa.planto
+        if boton.disabled:
+            boton = mesa.planto
+        if boton.disabled:
+            break
+        await boton.on_click(None)
+
+
+def test_el_menu_ofrece_el_modo_jere():
+    async def flujo():
+        menu = await abrir_menu()
+        return buscar(menu.page, "btn_jere").text
+
+    assert asyncio.run(flujo()) == "MAKA'I JERE"
+
+
+def test_la_mesa_de_jere_arranca_con_cuatro(sin_esperas):
+    from makai.core import jere as nucleo
+
+    async def flujo():
+        mesa = await abrir_jere()
+        return mesa
+
+    mesa = asyncio.run(flujo())
+    assert mesa.cantidad.value == str(nucleo.MINIMO_JUGADORES)
+    assert len(mesa.rivales.controls) == nucleo.MINIMO_JUGADORES - 1
+
+
+def test_se_puede_elegir_mas_jugadores(sin_esperas):
+    async def flujo():
+        mesa = await abrir_jere()
+        mesa.cantidad.value = "5"
+        await mesa.cantidad.on_change(None)
+        return MesaJere(mesa.page)
+
+    mesa = asyncio.run(flujo())
+    assert len(mesa.rivales.controls) == 4
+
+
+def test_repartir_reparte_al_jugador(sin_esperas):
+    async def flujo():
+        mesa = await abrir_jere()
+        await mesa.repartir.on_click(None)
+        return mesa
+
+    mesa = asyncio.run(flujo())
+    assert len(mesa.mano.controls) == 2
+
+
+def test_el_pozo_junta_lo_de_todos(sin_esperas):
+    from makai.core import jere as nucleo
+
+    async def flujo():
+        mesa = await abrir_jere()
+        await mesa.repartir.on_click(None)
+        return mesa.pozo.value
+
+    esperado = nucleo.APUESTA_INICIAL * nucleo.MINIMO_JUGADORES
+    assert asyncio.run(flujo()) == f"POZO  {esperado} 🪙"
+
+
+def test_una_mano_completa_reparte_el_pozo(sin_esperas):
+    async def flujo():
+        mesa = await abrir_jere()
+        await jugar_mano_jere(mesa)
+        return mesa.aviso.value
+
+    aviso = asyncio.run(flujo())
+    assert "🪙" in aviso, f"deberia anunciarse quien se llevo el pozo: {aviso!r}"
+
+
+def test_los_botones_de_declarar_arrancan_bloqueados(sin_esperas):
+    mesa = asyncio.run(abrir_jere())
+    assert mesa.carta.disabled
+    assert mesa.planto.disabled
+    assert not mesa.repartir.disabled
+
+
+def test_desde_jere_se_vuelve_al_menu(sin_esperas):
+    async def flujo():
+        mesa = await abrir_jere()
+        await mesa.menu.on_click(None)
+        return Menu(mesa.page)
+
+    menu = asyncio.run(flujo())
+    assert menu.comenzar.text == "PARTIDA RÁPIDA"
+
+
+def test_los_rivales_usan_otros_personajes(sin_esperas):
+    async def flujo():
+        almacen = ClientStorageStub({pj.CLAVE_PERSONAJE: "vaicho"})
+        mesa = await abrir_jere(almacenamiento=almacen)
+        return textos_visibles(mesa.page)
+
+    visibles = asyncio.run(flujo())
+    assert visibles.count("Vaicho") == 1, "el jugador no debe aparecer entre los rivales"
