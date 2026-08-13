@@ -295,3 +295,60 @@ def test_registrar_funciona_sin_archivos_de_audio():
     page = PageConClean()
     GestorAudio(page).registrar()
     assert page.overlay == []
+
+
+# --- Barajeo ------------------------------------------------------------------
+
+
+def test_descubrir_fuentes_encuentra_el_barajeo():
+    fuentes = descubrir_fuentes("assets", "Recursos")
+    assert fuentes["barajar_src"] == "Recursos/barajar.wav"
+
+
+def test_el_barajeo_suena_al_pedirlo():
+    page = PageStub()
+    g = GestorAudio(page, barajar_src="barajar.wav")
+    llamadas = []
+    g.barajar.play = lambda: llamadas.append("play")
+
+    g.sonar_barajeo()
+    g.sonar_barajeo()
+
+    assert llamadas == ["play", "play"], "un efecto corto debe poder repetirse"
+
+
+def test_el_barajeo_no_suena_silenciado():
+    page = PageStub()
+    g = GestorAudio(page, barajar_src="barajar.wav")
+    llamadas = []
+    g.barajar.play = lambda: llamadas.append("play")
+
+    g.alternar_silencio()
+    g.sonar_barajeo()
+
+    assert llamadas == []
+
+
+def test_el_barajeo_tambien_queda_listo_para_repetirse():
+    from flet_audio.audio import ReleaseMode
+
+    g = GestorAudio(PageStub(), barajar_src="barajar.wav")
+    assert g.barajar.release_mode == ReleaseMode.STOP.value
+
+
+def test_el_silencio_alcanza_a_todos_los_efectos():
+    g = GestorAudio(PageStub(), musica_src="a.wav", victoria_src="b.mp3", barajar_src="c.wav")
+    g.alternar_silencio()
+    assert g.musica.volume == 0.0
+    assert g.victoria.volume == 0.0
+    assert g.barajar.volume == 0.0
+
+
+def test_los_tres_sonidos_van_al_overlay():
+    page = PageStub()
+    GestorAudio(page, musica_src="a.wav", victoria_src="b.mp3", barajar_src="c.wav")
+    assert len(page.overlay) == 3
+
+
+def test_sonar_barajeo_no_falla_sin_archivo():
+    GestorAudio(PageStub()).sonar_barajeo()

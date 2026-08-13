@@ -19,6 +19,7 @@ import main as juego  # noqa: E402
 from makai.ai import Dificultad  # noqa: E402
 from makai.core import FICHAS_INICIALES, Rol  # noqa: E402
 from makai.ui import estadisticas as stats  # noqa: E402
+from makai.ui import personajes as pj  # noqa: E402
 from makai.ui import textos  # noqa: E402
 from makai.ui.audio import CLAVE_SILENCIO  # noqa: E402
 from makai.ui.preferencias import CLAVE_DIFICULTAD  # noqa: E402
@@ -78,46 +79,77 @@ def sin_esperas(monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", no_esperar)
 
 
+def recorrer(control):
+    """Recorre el árbol de controles, sea cual sea su forma."""
+    yield control
+    for atributo in ("controls", "content"):
+        hijo = getattr(control, atributo, None)
+        if hijo is None:
+            continue
+        for c in hijo if isinstance(hijo, list) else [hijo]:
+            yield from recorrer(c)
+
+
+def buscar(page, etiqueta):
+    """Encuentra un control por su `data`, sin depender de su posición.
+
+    Antes estos helpers indexaban posiciones (`col.controls[4]`), y cada
+    cambio de maquetado rompía decenas de tests que nada tenían que ver con
+    el cambio. Buscar por etiqueta los deja indiferentes al layout.
+    """
+    for raiz in page.controls:
+        for c in recorrer(raiz):
+            if getattr(c, "data", None) == etiqueta:
+                return c
+    raise AssertionError(f"no se encontro ningun control con data={etiqueta!r}")
+
+
+def textos_visibles(page):
+    valores = []
+    for raiz in page.controls:
+        for c in recorrer(raiz):
+            valor = getattr(c, "value", None)
+            if isinstance(valor, str) and valor:
+                valores.append(valor)
+    return valores
+
+
 class Menu:
     """Controles de la pantalla de inicio."""
 
     def __init__(self, page):
         self.page = page
-        col = page.controls[0].content
-        self.dificultad = col.controls[4]
-        self.estadisticas = col.controls[5]
-        self.comenzar = col.controls[-2]
-        self.reglas = col.controls[-1]
+        self.comenzar = buscar(page, "btn_jugar")
+        self.reglas = buscar(page, "btn_reglas")
+        self.dificultad = buscar(page, "dificultad")
+        self.estadisticas = buscar(page, "stats")
 
 
 class PantallaReglas:
     def __init__(self, page):
         self.page = page
-        col = page.controls[0].content
-        self.titulo = col.controls[0]
-        self.volver = col.controls[-1]
-        self.textos = [c.value for c in col.controls if getattr(c, "value", None)]
+        self.titulo = buscar(page, "titulo_reglas")
+        self.volver = buscar(page, "btn_volver")
+        self.textos = textos_visibles(page)
 
 
 class Tablero:
-    """Acceso a los controles que main.py arma, para no repetir índices.
-
-    La jerarquia es: page -> SafeArea -> Container -> Column.
-    """
+    """Controles de la mesa de juego, ubicados por etiqueta."""
 
     def __init__(self, page):
         self.page = page
-        root_col = page.controls[0].content.content
-        encabezado = root_col.controls[0]
-        self.marcador = encabezado.controls[0]
-        self.silencio = encabezado.controls[1]
-        self.banca = root_col.controls[1]
-        self.estado = root_col.controls[2].content
-        self.cartas_pc = root_col.controls[4]
-        self.cartas_jugador = root_col.controls[6]
-        fila_apuesta = root_col.controls[8]
-        self.bajar, self.apuesta, self.subir = fila_apuesta.controls
-        self.pedir, self.plantarse, self.repartir = root_col.controls[-1].controls
+        self.marcador = buscar(page, "marcador")
+        self.silencio = buscar(page, "silencio")
+        self.banca = buscar(page, "banca")
+        self.estado = buscar(page, "estado")
+        self.cartas_pc = buscar(page, "cartas_pc")
+        self.cartas_jugador = buscar(page, "cartas_jugador")
+        self.bajar = buscar(page, "apuesta_menos")
+        self.apuesta = buscar(page, "apuesta")
+        self.subir = buscar(page, "apuesta_mas")
+        self.pedir = buscar(page, "btn_pedir")
+        self.plantarse = buscar(page, "btn_plantarse")
+        self.repartir = buscar(page, "btn_repartir")
 
 
 async def abrir_menu(width=None, almacenamiento=None):
@@ -128,7 +160,7 @@ async def abrir_menu(width=None, almacenamiento=None):
 
 async def abrir_juego(width=None, almacenamiento=None):
     menu = await abrir_menu(width=width, almacenamiento=almacenamiento)
-    assert menu.comenzar.text == "COMENZAR JUEGO"
+    assert menu.comenzar.text == "PARTIDA RÁPIDA"
     await menu.comenzar.on_click(None)
     return Tablero(menu.page)
 
@@ -159,8 +191,9 @@ def test_la_pantalla_de_inicio_se_dibuja():
     page = PageStub()
     asyncio.run(juego.main(page))
     assert page.controls, "la pantalla de inicio no agrego ningun control"
-    visibles = [c.value for c in page.controls[0].content.controls if hasattr(c, "value")]
+    visibles = textos_visibles(page)
     assert "MAKA'I" in visibles
+    assert "PARAGUAYO" in visibles
 
 
 def test_se_entra_al_juego_desde_el_inicio(sin_esperas):
@@ -658,7 +691,7 @@ def test_pedir_o_plantarse_antes_de_repartir_no_rompe(sin_esperas):
 def test_se_puede_abrir_las_reglas_desde_el_menu():
     async def flujo():
         menu = await abrir_menu()
-        assert menu.reglas.text == "Cómo se juega"
+        assert menu.reglas.text == "CÓMO SE JUEGA"
         await menu.reglas.on_click(None)
         return PantallaReglas(menu.page)
 
@@ -688,7 +721,7 @@ def test_desde_las_reglas_se_vuelve_al_menu():
         return Menu(menu.page)
 
     menu = asyncio.run(flujo())
-    assert menu.comenzar.text == "COMENZAR JUEGO"
+    assert menu.comenzar.text == "PARTIDA RÁPIDA"
 
 
 def test_las_reglas_no_dejan_un_on_resized_del_juego_colgado(sin_esperas):
@@ -777,3 +810,140 @@ def test_las_cartas_que_pide_la_pc_se_muestran_boca_abajo(sin_esperas):
     # Antes del volteo, todo lo que se vio de la PC eran dorsos.
     primeras = vistas[0] if vistas else []
     assert all(src == juego.DORSO for src in primeras)
+
+
+# --- Barajeo al repartir ------------------------------------------------------
+
+
+def test_repartir_dispara_el_sonido_de_barajeo(sin_esperas, monkeypatch):
+    """main.py no expone el gestor, asi que se espia el metodo en la clase."""
+    sonidos = []
+    from makai.ui.audio import GestorAudio
+
+    monkeypatch.setattr(GestorAudio, "sonar_barajeo", lambda self: sonidos.append("barajeo"))
+
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+
+    asyncio.run(flujo())
+    assert sonidos == ["barajeo"], "el reparto debe sonar exactamente una vez"
+
+
+def test_repartir_fuera_de_turno_no_dispara_el_barajeo(sin_esperas, monkeypatch):
+    """El clic descartado no debe sonar: seria un barajeo fantasma."""
+    sonidos = []
+    from makai.ui.audio import GestorAudio
+
+    monkeypatch.setattr(GestorAudio, "sonar_barajeo", lambda self: sonidos.append("barajeo"))
+
+    async def flujo():
+        tablero = await abrir_juego()
+        await tablero.repartir.on_click(None)
+        await tablero.repartir.on_click(None)  # fuera de turno
+
+    asyncio.run(flujo())
+    assert sonidos == ["barajeo"]
+
+
+# --- Personajes ---------------------------------------------------------------
+
+
+class PantallaPersonajes:
+    def __init__(self, page):
+        self.page = page
+        self.titulo = buscar(page, "titulo_personajes")
+        self.volver = buscar(page, "btn_volver_personajes")
+
+    def tarjeta(self, identificador):
+        return buscar(self.page, f"personaje_{identificador}")
+
+
+class ClicFalso:
+    """Imita el evento de Flet, que trae el control que se toco."""
+
+    def __init__(self, control):
+        self.control = control
+
+
+async def abrir_personajes(almacenamiento=None):
+    menu = await abrir_menu(almacenamiento=almacenamiento)
+    assert menu_boton_personaje(menu).text == "MI PERSONAJE"
+    await menu_boton_personaje(menu).on_click(None)
+    return PantallaPersonajes(menu.page)
+
+
+def menu_boton_personaje(menu):
+    return buscar(menu.page, "btn_personaje")
+
+
+def test_el_menu_ofrece_elegir_personaje():
+    async def flujo():
+        menu = await abrir_menu()
+        return menu_boton_personaje(menu).text
+
+    assert asyncio.run(flujo()) == "MI PERSONAJE"
+
+
+def test_la_pantalla_muestra_los_seis_personajes():
+    async def flujo():
+        pantalla = await abrir_personajes()
+        return [pantalla.tarjeta(p.id) for p in pj.PERSONAJES]
+
+    tarjetas = asyncio.run(flujo())
+    assert len(tarjetas) == len(pj.PERSONAJES)
+
+
+def test_elegir_un_personaje_lo_guarda():
+    async def flujo():
+        almacen = ClientStorageStub()
+        pantalla = await abrir_personajes(almacenamiento=almacen)
+        tarjeta = pantalla.tarjeta("vaicho")
+        await tarjeta.on_click(ClicFalso(tarjeta))
+        return almacen
+
+    almacen = asyncio.run(flujo())
+    assert pj.cargar(almacen).id == "vaicho"
+
+
+def test_se_respeta_el_personaje_guardado():
+    async def flujo():
+        almacen = ClientStorageStub({pj.CLAVE_PERSONAJE: "leporato"})
+        tablero = await abrir_juego(almacenamiento=almacen)
+        return textos_visibles(tablero.page)
+
+    assert "Leporato" in asyncio.run(flujo())
+
+
+def test_desde_los_personajes_se_vuelve_al_menu():
+    async def flujo():
+        pantalla = await abrir_personajes()
+        await pantalla.volver.on_click(None)
+        return Menu(pantalla.page)
+
+    menu = asyncio.run(flujo())
+    assert menu.comenzar.text == "PARTIDA RÁPIDA"
+
+
+def test_la_mesa_muestra_las_dos_caras(sin_esperas):
+    async def flujo():
+        almacen = ClientStorageStub({pj.CLAVE_PERSONAJE: "gordo"})
+        tablero = await abrir_juego(almacenamiento=almacen)
+        return textos_visibles(tablero.page)
+
+    visibles = asyncio.run(flujo())
+    assert "El Gordo" in visibles, "falta el nombre del jugador"
+    rival = pj.rival_de(pj.por_id("gordo"))
+    assert rival.nombre in visibles, "falta el nombre del rival"
+
+
+def test_el_rival_nunca_es_el_mismo_que_el_jugador(sin_esperas):
+    for elegido in pj.PERSONAJES:
+
+        async def flujo(elegido=elegido):
+            almacen = ClientStorageStub({pj.CLAVE_PERSONAJE: elegido.id})
+            tablero = await abrir_juego(almacenamiento=almacen)
+            return textos_visibles(tablero.page)
+
+        visibles = asyncio.run(flujo())
+        assert visibles.count(elegido.nombre) == 1, f"{elegido.nombre} aparece dos veces"

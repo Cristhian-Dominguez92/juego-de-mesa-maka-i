@@ -36,6 +36,7 @@ VOLUMEN_EFECTOS = 0.8
 CANDIDATOS = {
     "musica_src": ("background_music.mp3", "background_music.wav"),
     "victoria_src": ("victoria.mp3", "victoria.wav"),
+    "barajar_src": ("barajar.mp3", "barajar.wav"),
 }
 
 
@@ -64,6 +65,7 @@ class GestorAudio:
         page: ft.Page,
         musica_src: str | None = None,
         victoria_src: str | None = None,
+        barajar_src: str | None = None,
     ) -> None:
         self.page = page
         self.silenciado = self._leer_preferencia()
@@ -79,24 +81,27 @@ class GestorAudio:
             if musica_src
             else None
         )
-        # STOP y no RELEASE: con RELEASE, audioplayers libera el reproductor y
-        # descarta la fuente al terminar la reproducción, y el "play" del plugin
-        # es un `seek(0)` seguido de `resume()`, que sobre un reproductor
-        # liberado no hace nada. Con STOP el sonido queda listo para volver a
-        # dispararse.
-        self.victoria = (
-            Audio(
-                src=victoria_src,
-                autoplay=False,
-                volume=0.0 if self.silenciado else VOLUMEN_EFECTOS,
-                release_mode=ReleaseMode.STOP,
-            )
-            if victoria_src
-            else None
-        )
+        self.victoria = self._efecto(victoria_src)
+        self.barajar = self._efecto(barajar_src)
 
         for control in self._controles():
             page.overlay.append(control)
+
+    def _efecto(self, src: str | None) -> Audio | None:
+        """Un sonido corto, listo para dispararse muchas veces.
+
+        STOP y no RELEASE: con RELEASE, audioplayers libera el reproductor y
+        descarta la fuente al terminar, y el "play" del plugin es un `seek(0)`
+        seguido de `resume()`, que sobre un reproductor liberado no hace nada.
+        """
+        if not src:
+            return None
+        return Audio(
+            src=src,
+            autoplay=False,
+            volume=0.0 if self.silenciado else VOLUMEN_EFECTOS,
+            release_mode=ReleaseMode.STOP,
+        )
 
     def registrar(self) -> None:
         """Vuelve a poner los controles en el overlay y los sincroniza.
@@ -122,9 +127,15 @@ class GestorAudio:
         self._musica_sonando = True
 
     def sonar_victoria(self) -> None:
-        if self.victoria is None or self.silenciado:
+        self._sonar(self.victoria)
+
+    def sonar_barajeo(self) -> None:
+        self._sonar(self.barajar)
+
+    def _sonar(self, efecto: Audio | None) -> None:
+        if efecto is None or self.silenciado:
             return
-        self._intentar(self.victoria.play)
+        self._intentar(efecto.play)
 
     # --- Silencio ------------------------------------------------------------
 
@@ -139,14 +150,17 @@ class GestorAudio:
         if self.musica is not None:
             self.musica.volume = 0.0 if self.silenciado else VOLUMEN_MUSICA
             self._intentar(self.musica.update)
-        if self.victoria is not None:
-            self.victoria.volume = 0.0 if self.silenciado else VOLUMEN_EFECTOS
-            self._intentar(self.victoria.update)
+        for efecto in self._efectos():
+            efecto.volume = 0.0 if self.silenciado else VOLUMEN_EFECTOS
+            self._intentar(efecto.update)
 
     # --- Internos ------------------------------------------------------------
 
+    def _efectos(self) -> list[Audio]:
+        return [c for c in (self.victoria, self.barajar) if c is not None]
+
     def _controles(self) -> list[Audio]:
-        return [c for c in (self.musica, self.victoria) if c is not None]
+        return ([self.musica] if self.musica is not None else []) + self._efectos()
 
     def _leer_preferencia(self) -> bool:
         # client_storage no está disponible en todos los contextos (por ejemplo

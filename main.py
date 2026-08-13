@@ -12,6 +12,7 @@ from makai.ai import Dificultad, estrategia_para
 from makai.core import Carta, Estado, Partida, Resultado, Rol
 from makai.ui import animacion, layout, textos
 from makai.ui import estadisticas as stats
+from makai.ui import personajes as pj
 from makai.ui.audio import GestorAudio, descubrir_fuentes
 from makai.ui.preferencias import cargar_dificultad, guardar_dificultad
 
@@ -21,8 +22,23 @@ from makai.ui.preferencias import cargar_dificultad, guardar_dificultad
 ASSETS_DIR = "assets"
 RECURSOS = "Recursos"
 DORSO = f"{RECURSOS}/dorso.webp"
+FONDO_MENU = "fondo_menu.png"
+MESA_MADERA = "mesa_madera.png"
+CARPETA_PERSONAJES = "Personajes"
 
 TITULO = "¡JAHUGA Maka-'I!"
+
+# --- Colores de la bandera paraguaya ---
+ROJO = "#D52B1E"
+BLANCO = "#FFFFFF"
+AZUL = "#0038A8"
+
+#: Fondo del menú: casi negro, para que el encaje del ñandutí se insinúe.
+NEGRO_MENU = "#0A0A0C"
+
+#: Tono base de la mesa, detrás de la textura de madera. Se ve mientras la
+#: imagen carga, así que conviene que sea del mismo color y no verde.
+MADERA_BASE = "#8a6742"
 
 MENSAJE_RONDA = {
     Resultado.GANA_JUGADOR: "¡GANASTE ESTA RONDA! 🏆",
@@ -46,6 +62,91 @@ def ruta_imagen(carta: Carta) -> str:
     return f"{RECURSOS}/{carta.nombre_archivo}"
 
 
+def ruta_personaje(personaje: pj.Personaje) -> str:
+    return f"{CARPETA_PERSONAJES}/{personaje.archivo}"
+
+
+def titulo_con_contorno(texto: str, tamano: float, color: str) -> ft.Stack:
+    """Texto de color con contorno blanco.
+
+    Flutter no dibuja relleno y contorno en una sola pasada, así que se apilan
+    dos textos idénticos: el de abajo solo traza el borde, el de arriba rellena.
+    """
+    trazo = ft.Text(
+        texto,
+        size=tamano,
+        weight=ft.FontWeight.BOLD,
+        style=ft.TextStyle(
+            foreground=ft.Paint(
+                color=BLANCO,
+                style=ft.PaintingStyle.STROKE,
+                stroke_width=max(3.0, tamano * 0.09),
+            )
+        ),
+    )
+    relleno = ft.Text(texto, size=tamano, weight=ft.FontWeight.BOLD, color=color)
+    return ft.Stack([trazo, relleno])
+
+
+def boton_menu(texto: str, color: str, on_click, ancho: float) -> ft.Button:
+    """Botón ancho al estilo de la bandera: fondo de color y borde blanco."""
+    return ft.Button(
+        texto,
+        on_click=on_click,
+        width=ancho,
+        height=54,
+        style=ft.ButtonStyle(
+            bgcolor=color,
+            color=BLANCO,
+            side=ft.BorderSide(2, BLANCO),
+            shape=ft.RoundedRectangleBorder(radius=6),
+            text_style=ft.TextStyle(size=19, weight=ft.FontWeight.BOLD),
+        ),
+    )
+
+
+def ficha_personaje(personaje: pj.Personaje, alineado_a_la_izquierda: bool) -> ft.Row:
+    """Retrato y nombre de quien juega ese lado de la mesa.
+
+    Van sobre un panel oscuro: la mesa es de madera clara y el texto blanco a
+    secas no se leería.
+    """
+    contenido = [
+        ft.Container(
+            content=ft.Image(src=ruta_personaje(personaje), width=44, height=44),
+            border_radius=22,
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            border=ft.border.all(2, BLANCO),
+        ),
+        ft.Text(personaje.nombre, color=BLANCO, weight=ft.FontWeight.BOLD, size=15),
+    ]
+    if not alineado_a_la_izquierda:
+        contenido.reverse()
+
+    return ft.Row(
+        [
+            ft.Container(
+                content=ft.Row(contenido, spacing=8, tight=True),
+                bgcolor=ft.Colors.with_opacity(0.45, ft.Colors.BLACK),
+                border_radius=24,
+                padding=ft.padding.symmetric(horizontal=10, vertical=4),
+            )
+        ],
+        alignment=(
+            ft.MainAxisAlignment.START if alineado_a_la_izquierda else ft.MainAxisAlignment.END
+        ),
+    )
+
+
+def franja_bandera(alto: float = 7) -> ft.Column:
+    """Las tres bandas horizontales de la bandera paraguaya."""
+    return ft.Column(
+        [ft.Container(bgcolor=c, height=alto, expand=True) for c in (ROJO, BLANCO, AZUL)],
+        spacing=0,
+        tight=True,
+    )
+
+
 def texto_banca(banca: Rol) -> str:
     return "🏛 Sos la banca" if banca is Rol.JUGADOR else "🏛 La banca es la PC"
 
@@ -63,7 +164,7 @@ def resumen_estadisticas(e: stats.Estadisticas) -> str:
 # --- Aplicación Principal ---
 async def main(page: ft.Page):
     page.title = "Maka-i Paraguayo"
-    page.bgcolor = "#1a4a1a"
+    page.bgcolor = NEGRO_MENU
     page.theme_mode = ft.ThemeMode.DARK
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
     # En pantallas bajas el tablero no entra completo: mejor poder desplazarlo
@@ -74,6 +175,7 @@ async def main(page: ft.Page):
     almacen = page.client_storage
     estadisticas = stats.cargar(almacen)
     dificultad = cargar_dificultad(almacen)
+    personaje = pj.cargar(almacen)
     partida = Partida(estrategia_pc=estrategia_para(dificultad))
 
     # Función para mostrar pantalla de inicio
@@ -82,26 +184,21 @@ async def main(page: ft.Page):
         page.clean()
         page.on_resized = None
 
-        txt_welcome = ft.Text(
-            "Bienvenidos al tradicional juego de mesa",
-            size=layout.tamano_texto(28, page.width),
-            weight=ft.FontWeight.BOLD,
-            color="gold",
-            text_align=ft.TextAlign.CENTER,
-        )
-        txt_game_name = ft.Text(
-            "MAKA'I",
-            size=layout.tamano_texto(60, page.width),
-            weight=ft.FontWeight.BOLD,
-            color="orange",
-            text_align=ft.TextAlign.CENTER,
-        )
-        txt_subtitle = ft.Text(
-            "¡El juego de cartas más emocionante!",
-            size=layout.tamano_texto(18, page.width),
-            color="yellow",
-            text_align=ft.TextAlign.CENTER,
-            italic=True,
+        page.bgcolor = NEGRO_MENU
+        # Botones anchos pero acotados: a pantalla completa en un monitor
+        # quedarían absurdamente largos.
+        ancho_boton = min(420.0, (page.width or 480) - 56)
+
+        # El título va en dos líneas y con los colores de la bandera, como los
+        # letreros de los juegos de cartas locales.
+        titulo = ft.Column(
+            [
+                titulo_con_contorno("MAKA'I", layout.tamano_texto(72, page.width), ROJO),
+                titulo_con_contorno("PARAGUAYO", layout.tamano_texto(46, page.width), AZUL),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=0,
+            tight=True,
         )
 
         async def cambiar_dificultad(e):
@@ -114,56 +211,146 @@ async def main(page: ft.Page):
             value=dificultad.value,
             options=[ft.DropdownOption(key=d.value, text=d.etiqueta) for d in Dificultad],
             on_change=cambiar_dificultad,
-            width=220,
+            width=ancho_boton,
+            border_color=BLANCO,
+            color=BLANCO,
+            data="dificultad",
         )
 
         txt_stats = ft.Text(
             resumen_estadisticas(estadisticas),
-            size=layout.tamano_texto(14, page.width),
-            color="white70",
+            size=layout.tamano_texto(13, page.width),
+            color="white60",
             text_align=ft.TextAlign.CENTER,
+            data="stats",
         )
 
-        btn_start = ft.Button(
-            "COMENZAR JUEGO",
-            on_click=mostrar_juego,
-            bgcolor="orange800",
-            color="white",
-            width=300,
-            height=50,
-        )
-        btn_reglas = ft.TextButton(
-            "Cómo se juega",
-            on_click=mostrar_reglas,
-            style=ft.ButtonStyle(color="white70"),
-        )
+        btn_start = boton_menu("PARTIDA RÁPIDA", ROJO, mostrar_juego, ancho_boton)
+        btn_start.data = "btn_jugar"
+        btn_reglas = boton_menu("CÓMO SE JUEGA", AZUL, mostrar_reglas, ancho_boton)
+        btn_reglas.data = "btn_reglas"
+        btn_personaje = boton_menu("MI PERSONAJE", ROJO, mostrar_personajes, ancho_boton)
+        btn_personaje.data = "btn_personaje"
 
         welcome_col = ft.Column(
             [
-                txt_welcome,
-                txt_game_name,
-                txt_subtitle,
-                ft.Divider(height=20),
+                titulo,
+                ft.Container(height=18),
+                btn_start,
+                btn_personaje,
+                btn_reglas,
+                ft.Container(height=6),
                 dd_dificultad,
                 txt_stats,
-                ft.Divider(height=20),
-                btn_start,
-                btn_reglas,
             ],
             # En una Column el eje principal es el vertical, asi que el centrado
             # vertical va en `alignment`. `vertical_alignment` solo existe en Row.
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             alignment=ft.MainAxisAlignment.CENTER,
-            spacing=16,
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
         )
 
-        page.add(ft.SafeArea(content=welcome_col, expand=True))
+        fondo = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Container(content=welcome_col, expand=True, padding=20),
+                    franja_bandera(),
+                ],
+                spacing=0,
+                expand=True,
+            ),
+            image=ft.DecorationImage(src=FONDO_MENU, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+        )
+
+        page.add(ft.SafeArea(content=fondo, expand=True))
+        page.update()
+
+    # Pantalla de selección de personaje
+    async def mostrar_personajes(e=None):
+        nonlocal personaje
+        page.clean()
+        page.on_resized = None
+        page.bgcolor = NEGRO_MENU
+
+        async def elegir(e):
+            nonlocal personaje
+            personaje = pj.por_id(e.control.data.removeprefix("personaje_"), personaje)
+            pj.guardar(almacen, personaje)
+            # Se vuelve a dibujar para que el marco se mueva al recién elegido.
+            await mostrar_personajes()
+
+        tarjetas = []
+        for candidato in pj.PERSONAJES:
+            elegido = candidato == personaje
+            tarjetas.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Image(src=ruta_personaje(candidato), width=96, height=96),
+                            ft.Text(
+                                candidato.nombre,
+                                color=BLANCO,
+                                weight=ft.FontWeight.BOLD,
+                                size=14,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=6,
+                        tight=True,
+                    ),
+                    on_click=elegir,
+                    data=f"personaje_{candidato.id}",
+                    padding=10,
+                    border_radius=10,
+                    border=ft.border.all(3, ROJO if elegido else "transparent"),
+                    bgcolor=ft.Colors.with_opacity(0.30 if elegido else 0.12, ft.Colors.WHITE),
+                    ink=True,
+                )
+            )
+
+        contenido = ft.Column(
+            [
+                ft.Text(
+                    "Elegí tu personaje",
+                    size=layout.tamano_texto(30, page.width),
+                    weight=ft.FontWeight.BOLD,
+                    color=BLANCO,
+                    data="titulo_personajes",
+                ),
+                ft.Container(height=10),
+                ft.Row(
+                    tarjetas,
+                    wrap=True,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=12,
+                    run_spacing=12,
+                ),
+                ft.Container(height=16),
+                boton_menu("VOLVER", AZUL, mostrar_inicio, min(300.0, (page.width or 480) - 56)),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=8,
+            scroll=ft.ScrollMode.AUTO,
+        )
+        contenido.controls[-1].data = "btn_volver_personajes"
+
+        fondo = ft.Container(
+            content=ft.Container(content=contenido, expand=True, padding=20),
+            image=ft.DecorationImage(src=FONDO_MENU, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+        )
+        page.add(ft.SafeArea(content=fondo, expand=True))
         page.update()
 
     # Pantalla de reglas
     async def mostrar_reglas(e=None):
         page.clean()
         page.on_resized = None
+        page.bgcolor = NEGRO_MENU
 
         secciones = []
         for encabezado, cuerpo in textos.REGLAS:
@@ -187,6 +374,7 @@ async def main(page: ft.Page):
                     size=layout.tamano_texto(32, page.width),
                     weight=ft.FontWeight.BOLD,
                     color="orange",
+                    data="titulo_reglas",
                 ),
                 ft.Divider(height=16),
                 *secciones,
@@ -197,6 +385,7 @@ async def main(page: ft.Page):
                     color="white",
                     width=200,
                     height=44,
+                    data="btn_volver",
                 ),
             ],
             horizontal_alignment=ft.CrossAxisAlignment.START,
@@ -209,32 +398,52 @@ async def main(page: ft.Page):
     # Función para mostrar el juego principal
     async def mostrar_juego(e=None):
         page.clean()
+        page.bgcolor = MADERA_BASE
         # La música se arranca al final, cuando la pantalla ya está montada:
         # `page.clean()` da de baja los controles del overlay y reproducir con
         # el control desregistrado no hace nada.
 
+        # La PC juega con otra cara: ver la propia del otro lado de la mesa
+        # rompe la ilusión.
+        rival = pj.rival_de(personaje)
+
         pc_revelada = False
 
-        txt_status = ft.Text(TITULO, weight=ft.FontWeight.BOLD)
-        txt_fichas = ft.Text(color="yellow", weight=ft.FontWeight.BOLD)
-        txt_banca = ft.Text(color="white70", italic=True)
-        txt_apuesta = ft.Text(color="white")
-        row_pc = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=layout.SEPARACION_CARTAS)
-        row_user = ft.Row(alignment=ft.MainAxisAlignment.CENTER, spacing=layout.SEPARACION_CARTAS)
+        txt_status = ft.Text(TITULO, weight=ft.FontWeight.BOLD, data="estado")
+        txt_fichas = ft.Text(color="yellow", weight=ft.FontWeight.BOLD, data="marcador")
+        txt_banca = ft.Text(color="white70", italic=True, data="banca")
+        txt_apuesta = ft.Text(color="white", data="apuesta")
+        row_pc = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=layout.SEPARACION_CARTAS,
+            data="cartas_pc",
+        )
+        row_user = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=layout.SEPARACION_CARTAS,
+            data="cartas_jugador",
+        )
 
         btn_silencio = ft.IconButton(
             icon=ft.Icons.VOLUME_OFF if audio.silenciado else ft.Icons.VOLUME_UP,
             tooltip="Activar sonido" if audio.silenciado else "Silenciar",
             icon_color="white",
+            data="silencio",
         )
-        btn_menos = ft.IconButton(icon=ft.Icons.REMOVE, tooltip="Bajar apuesta", icon_color="white")
-        btn_mas = ft.IconButton(icon=ft.Icons.ADD, tooltip="Subir apuesta", icon_color="white")
+        btn_menos = ft.IconButton(
+            icon=ft.Icons.REMOVE, tooltip="Bajar apuesta", icon_color="white", data="apuesta_menos"
+        )
+        btn_mas = ft.IconButton(
+            icon=ft.Icons.ADD, tooltip="Subir apuesta", icon_color="white", data="apuesta_mas"
+        )
 
         status_box = ft.Container(
             content=txt_status,
             padding=10,
             border_radius=12,
-            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.WHITE),
+            # Sobre la madera un velo blanco es invisible: el panel va
+            # oscuro para que el texto blanco se lea.
+            bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
             scale=1.0,
             animate_scale=450,
             rotate=ft.Rotate(0.0),
@@ -261,11 +470,11 @@ async def main(page: ft.Page):
                 encabezado,
                 txt_banca,
                 status_box,
-                ft.Text("PC"),
+                ficha_personaje(rival, alineado_a_la_izquierda=False),
                 row_pc,
                 ft.Divider(height=30),
                 row_user,
-                ft.Text("TÚ"),
+                ficha_personaje(personaje, alineado_a_la_izquierda=True),
                 fila_apuesta,
                 ft.Row(alignment=ft.MainAxisAlignment.CENTER),
             ],
@@ -375,9 +584,9 @@ async def main(page: ft.Page):
             aplicar_tamanos()
             await actualizar_tablero(revelar_pc=pc_revelada)
 
-        btn_p = ft.Button("PEDIR", disabled=True)
-        btn_s = ft.Button("PLANTARSE", disabled=True)
-        btn_r = ft.Button("REPARTIR", bgcolor="orange800", color="white")
+        btn_p = ft.Button("PEDIR", disabled=True, data="btn_pedir")
+        btn_s = ft.Button("PLANTARSE", disabled=True, data="btn_plantarse")
+        btn_r = ft.Button("REPARTIR", bgcolor="orange800", color="white", data="btn_repartir")
 
         def mostrar_marcador():
             txt_fichas.value = f"Vos {partida.fichas_jugador} 🪙  ·  {partida.fichas_pc} 🪙 PC"
@@ -425,6 +634,7 @@ async def main(page: ft.Page):
         async def repartir(e):
             if partida.estado is not Estado.ESPERANDO_REPARTO:
                 return
+            audio.sonar_barajeo()
             partida.repartir()
             txt_status.value = f"Puntaje: {partida.puntaje_jugador}"
             btn_p.disabled, btn_s.disabled, btn_r.disabled = False, False, True
@@ -511,7 +721,13 @@ async def main(page: ft.Page):
         buttons_row = ft.Row(alignment=ft.MainAxisAlignment.CENTER, wrap=True)
         buttons_row.controls = [btn_p, btn_s, btn_r]
         root_col.controls[-1] = buttons_row
-        page.add(ft.SafeArea(content=root_box, expand=True))
+        mesa = ft.Container(
+            content=root_box,
+            image=ft.DecorationImage(src=MESA_MADERA, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+            alignment=ft.alignment.center,
+        )
+        page.add(ft.SafeArea(content=mesa, expand=True))
         page.update()
 
         # Recién ahora, con la pantalla montada y los controles de audio dados
