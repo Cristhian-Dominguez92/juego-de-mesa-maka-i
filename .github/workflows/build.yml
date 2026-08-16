@@ -120,7 +120,12 @@ jobs:
           # --no-rich-output es imprescindible en CI: sin él, flet imprime cada
           # cuadro del spinner como una línea nueva y el error real queda
           # sepultado bajo cientos de repeticiones.
-          COMUNES="--verbose --no-rich-output"
+          #
+          # --build-number sube en cada corrida. Estaba fijo en 1 en el
+          # pyproject, así que todos los APK salían con la misma versión:
+          # Google Play rechaza un envío cuyo número no supere al anterior, y
+          # en el teléfono una reinstalación con el mismo número es ambigua.
+          COMUNES="--verbose --no-rich-output --build-number ${{ github.run_number }}"
 
           if [ -f upload-keystore.jks ]; then
             # Ruta ABSOLUTA: Gradle corre desde un subdirectorio del build, así

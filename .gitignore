@@ -23,6 +23,9 @@ _local/
 .ruff_cache/
 .pytest_cache/
 
+# Cache de graphify: son artefactos regenerables, no fuente.
+graphify-out/
+
 # SO / editores
 .DS_Store
 Thumbs.db

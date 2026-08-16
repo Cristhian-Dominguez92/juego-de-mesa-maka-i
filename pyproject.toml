@@ -26,6 +26,8 @@ org = "com.cristhiandominguez"
 product = "Maka'i"
 company = "Cristhian Domínguez"
 copyright = "Copyright (c) 2026 Cristhian Domínguez"
+# Valor de respaldo para builds locales. El CI lo sobrescribe con el numero
+# de corrida via --build-number, que tiene prioridad sobre este archivo.
 build_number = 1
 
 [tool.flet.app]
