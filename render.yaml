@@ -1,0 +1,13 @@
+# Despliegue en Render (capa Free) del servidor de Maka-i para jugar por
+# internet. Ver la sección "Jugar por internet" del README para los pasos
+# manuales equivalentes si Render cambió este formato.
+services:
+  - type: web
+    name: makai-multijugador
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-server.txt
+    startCommand: uvicorn asgi:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.9

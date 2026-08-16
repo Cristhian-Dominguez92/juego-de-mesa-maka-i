@@ -102,6 +102,36 @@ def test_no_se_puede_pedir_despues_de_plantarse():
 # --- Turno de la PC -----------------------------------------------------------
 
 
+def test_pedir_pc_suma_una_carta_sin_consultar_la_estrategia():
+    p = nueva_partida(estrategia_pc=lambda contexto: False)
+    p.repartir()
+    p.plantarse()
+    p.pedir_pc()
+    assert len(p.mano_pc) == CARTAS_INICIALES + 1
+
+
+def test_pedir_pc_no_puede_pasar_de_tres_cartas():
+    p = nueva_partida()
+    p.repartir()
+    p.plantarse()
+    p.pedir_pc()
+    with pytest.raises(EstadoInvalido):
+        p.pedir_pc()
+
+
+def test_no_se_puede_pedir_pc_antes_de_que_el_jugador_se_plante():
+    p = nueva_partida()
+    p.repartir()
+    with pytest.raises(EstadoInvalido):
+        p.pedir_pc()
+
+
+def test_no_se_puede_pedir_pc_antes_de_repartir():
+    p = nueva_partida()
+    with pytest.raises(EstadoInvalido):
+        p.pedir_pc()
+
+
 def test_la_pc_no_juega_durante_el_turno_del_jugador():
     p = nueva_partida()
     p.repartir()

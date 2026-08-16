@@ -178,6 +178,21 @@ class Partida:
         self.mano_pc.append(carta)
         return carta
 
+    def pedir_pc(self) -> Carta:
+        """El lado 'PC' pide una carta por decisión propia, sin consultar la IA.
+
+        Para cuando ese lado lo controla una persona real (multijugador en
+        red) en vez de la estrategia de la PC.
+        """
+        self._exigir(Estado.TURNO_PC)
+        if len(self.mano_pc) >= MAX_CARTAS_POR_MANO:
+            raise EstadoInvalido(
+                f"El otro jugador ya tiene el máximo de {MAX_CARTAS_POR_MANO} cartas"
+            )
+        carta = self._robar()
+        self.mano_pc.append(carta)
+        return carta
+
     def resolver_ronda(self) -> ResultadoRonda:
         """Cierra la ronda: mueve las fichas, rota la banca y devuelve el resumen."""
         self._exigir(Estado.TURNO_PC)

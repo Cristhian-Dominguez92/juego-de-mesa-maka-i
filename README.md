@@ -3,8 +3,9 @@
 Implementación digital del **Maka'i**, el tradicional juego de cartas paraguayo,
 hecha con [Flet](https://flet.dev) (Python) para escritorio y Android.
 
-> **Estado: prototipo.** Jugable en escritorio contra la PC. Ver
-> [Limitaciones conocidas](#limitaciones-conocidas) antes de distribuirlo.
+> **Estado: prototipo.** Jugable en escritorio contra la PC, o en red (LAN o
+> internet) entre dos personas. Ver [Limitaciones
+> conocidas](#limitaciones-conocidas) antes de distribuirlo.
 
 ## Requisitos
 
@@ -32,6 +33,53 @@ pip install -r requirements-dev.txt
 ```bash
 python main.py
 ```
+
+## Jugar en red
+
+Desde el menú, "PARTIDA RÁPIDA" sigue siendo contra la PC. "JUGAR EN RED"
+conecta a dos personas: una crea una sala (le da un código) y la otra se une
+con ese código. Hay dos formas de correr el servidor que arma esa conexión.
+
+### Misma red local (LAN)
+
+```bash
+python main.py --servidor
+```
+
+Levanta el juego como servidor web en el puerto 8550, escuchando en toda la
+red local. La PC que lo corre entra por `http://localhost:8550`; el resto de
+los dispositivos de la misma WiFi, por `http://<IP-de-esa-PC>:8550` (la IP se
+ve con `ipconfig`). Puede hacer falta permitir el puerto 8550 en el firewall
+de Windows (entrante, TCP, perfil de la red que estés usando — revisá en
+Windows si tu WiFi está marcada como "Privada" o "Pública").
+
+### Por internet (Render, capa gratuita)
+
+Para que jueguen dos personas en redes distintas, sin depender de que una PC
+esté siempre prendida ni de tocar el router, el repo incluye `render.yaml`
+para desplegar en [Render](https://render.com):
+
+1. Conectá el repositorio de GitHub en el dashboard de Render → **New Web
+   Service** (o dejá que detecte automáticamente el `render.yaml` de la
+   raíz). Plan **Free**.
+2. Si Render no toma el `render.yaml` solo, cargá esto a mano:
+   - **Build Command:** `pip install -r requirements-server.txt`
+   - **Start Command:**
+     `uvicorn asgi:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*`
+3. Una vez desplegado, Render da una URL `https://<tu-servicio>.onrender.com`
+   — esa es la que comparten los dos jugadores.
+
+Cosas a tener en cuenta con el plan gratuito:
+
+- El servicio se "duerme" tras 15 minutos sin nadie conectado. La primera
+  visita después de eso tarda unos 30-50 segundos en responder mientras
+  arranca; una vez arriba, una partida en curso no se corta por esto.
+- Las salas viven en memoria del proceso: si el servicio se reinicia (se
+  duerme y despierta, o se redepliega) las salas activas se pierden. Hay que
+  crear la sala de nuevo.
+- Los códigos de sala tienen límite de intentos fallidos por IP (ver
+  `makai/ui/red.py`) para que no sea viable adivinarlos por fuerza bruta
+  desde internet.
 
 ## Compilar el APK
 
@@ -118,6 +166,7 @@ Están documentadas en detalle en [docs/REGLAS.md](docs/REGLAS.md).
 
 ```
 main.py                  Capa de presentación (Flet). Solo dibuja y traduce clics.
+asgi.py                  Punto de entrada ASGI para desplegar en la nube (Render).
 makai/core/              Lógica de juego pura, sin dependencias de UI.
   cartas.py                Baraja española de 40 cartas.
   reglas.py                Puntuación y resolución de rondas.
@@ -129,12 +178,15 @@ makai/ui/                Apoyo a la presentación.
   audio.py                 Música y efectos sobre ft.Audio, con silencio.
   estadisticas.py          Historial del jugador, persistido.
   preferencias.py          Dificultad elegida, persistida.
+  red.py                   Salas de partida en red (LAN o internet), en memoria.
   textos.py                Contenido de la pantalla de reglas.
 tests/                   Suite de tests (no requiere Flet).
 docs/REGLAS.md           Reglas del juego, con lo confirmado y lo pendiente.
 pyproject.toml           Metadatos y configuración de `flet build`.
 requirements.txt         Dependencias que se empaquetan en el APK.
 requirements-dev.txt     Dependencias solo de escritorio + herramientas.
+requirements-server.txt  Dependencias solo para el servidor en la nube.
+render.yaml              Config de despliegue en Render (ver "Jugar en red").
 assets/Recursos/         Imágenes de cartas y audio.
 tools/                   Scripts auxiliares, no forman parte del juego.
 _local/                  Archivos locales fuera de control de versiones.

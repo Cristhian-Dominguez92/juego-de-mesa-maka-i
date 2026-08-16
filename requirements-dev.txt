@@ -6,6 +6,10 @@
 # `flet build apk` ni para correr los tests.
 flet[desktop]==0.28.3
 
+# Para `python main.py --servidor` (modo LAN, ver "Jugar en red"): sin esto
+# Flet intenta instalarlo solo al vuelo y falla si el venv no tiene pip.
+flet-web==0.28.3
+
 # Herramientas de calidad de código.
 ruff==0.16.1
 pytest==9.1.1

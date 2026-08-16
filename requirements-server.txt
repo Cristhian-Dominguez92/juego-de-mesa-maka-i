@@ -1,0 +1,12 @@
+# Dependencias para correr el servidor en la nube (ver "Jugar por internet"
+# en el README). NO se empaquetan en el APK ni hacen falta para escritorio o
+# LAN (para eso están requirements.txt y requirements-dev.txt).
+-r requirements.txt
+
+# El servidor ASGI (asgi.py) necesita el paquete web de Flet.
+flet-web==0.28.3
+
+# Servidor de producción que corre asgi:app. Sin versión fija a propósito:
+# tiene que ser compatible con lo que flet-web ya trae como dependencia
+# transitiva, y fijar un número a ciegas podría chocar con eso.
+uvicorn[standard]

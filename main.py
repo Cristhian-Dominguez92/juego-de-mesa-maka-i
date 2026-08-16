@@ -5,12 +5,23 @@ limita a dibujar el estado de una `Partida` y a traducir clics.
 """
 
 import asyncio
+import os
+import sys
 
 import flet as ft
 
 from makai.ai import Dificultad, estrategia_para
-from makai.core import Carta, Estado, Partida, Resultado, Rol, jere
-from makai.ui import animacion, layout, textos
+from makai.core import (
+    MAX_CARTAS_POR_MANO,
+    Carta,
+    Estado,
+    Partida,
+    Resultado,
+    Rol,
+    calcular_puntaje,
+    jere,
+)
+from makai.ui import animacion, layout, red, textos
 from makai.ui import estadisticas as stats
 from makai.ui import personajes as pj
 from makai.ui.audio import GestorAudio, descubrir_fuentes
@@ -235,6 +246,8 @@ async def main(page: ft.Page):
         btn_reglas.data = "btn_reglas"
         btn_jere = boton_menu("MAKA'I JERE", AZUL, mostrar_jere, ancho_boton)
         btn_jere.data = "btn_jere"
+        btn_red = boton_menu("JUGAR EN RED", AZUL, mostrar_red_inicio, ancho_boton)
+        btn_red.data = "btn_red"
         btn_personaje = boton_menu("MI PERSONAJE", ROJO, mostrar_personajes, ancho_boton)
         btn_personaje.data = "btn_personaje"
 
@@ -244,6 +257,7 @@ async def main(page: ft.Page):
                 ft.Container(height=18),
                 btn_start,
                 btn_jere,
+                btn_red,
                 btn_personaje,
                 btn_reglas,
                 ft.Container(height=6),
@@ -657,6 +671,484 @@ async def main(page: ft.Page):
         audio.registrar()
         audio.iniciar_musica()
 
+    # --- Maka'i en red: dos personas, cada una en su propio dispositivo,
+    # conectadas al mismo servidor Flet (ver `--servidor` al final del
+    # archivo). No hay pubsub en esta versión de Flet: la sincronización se
+    # hace guardando en `red.Sala` un callback de cada sesión y llamándolo
+    # directamente desde la otra, ya que ambas corren en el mismo proceso y
+    # el mismo event loop.
+    async def mostrar_red_inicio(e=None):
+        page.clean()
+        page.on_resized = None
+        page.on_disconnect = None
+        page.bgcolor = NEGRO_MENU
+
+        ancho_boton = min(420.0, (page.width or 480) - 56)
+
+        btn_crear = boton_menu("CREAR SALA", ROJO, mostrar_crear_sala, ancho_boton)
+        btn_crear.data = "btn_crear_sala"
+        btn_unirse = boton_menu("UNIRME CON CÓDIGO", AZUL, mostrar_unirse_sala, ancho_boton)
+        btn_unirse.data = "btn_unirse_sala"
+        btn_volver = boton_menu("VOLVER", AZUL, mostrar_inicio, ancho_boton)
+        btn_volver.data = "btn_volver_red"
+
+        contenido = ft.Column(
+            [
+                ft.Text(
+                    "Jugar en red",
+                    size=layout.tamano_texto(30, page.width),
+                    weight=ft.FontWeight.BOLD,
+                    color=BLANCO,
+                    data="titulo_red",
+                ),
+                ft.Text(
+                    "Los dos dispositivos deben estar conectados a la misma red (WiFi).",
+                    size=layout.tamano_texto(14, page.width),
+                    color="white70",
+                    text_align=ft.TextAlign.CENTER,
+                ),
+                ft.Container(height=10),
+                btn_crear,
+                btn_unirse,
+                ft.Container(height=6),
+                btn_volver,
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        fondo = ft.Container(
+            content=ft.Container(content=contenido, expand=True, padding=20),
+            image=ft.DecorationImage(src=FONDO_MENU, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+        )
+        page.add(ft.SafeArea(content=fondo, expand=True))
+        page.update()
+
+    async def mostrar_crear_sala(e=None):
+        page.clean()
+        page.on_resized = None
+        page.bgcolor = NEGRO_MENU
+
+        sala = red.crear_sala(estrategia_pc=estrategia_para(dificultad))
+
+        async def entrar_como_anfitrion():
+            await mostrar_juego_red(sala, Rol.JUGADOR)
+
+        # Cuando se una el invitado, esto es lo que saca a esta pantalla del
+        # "esperando" y la lleva directo al tablero compartido.
+        sala.marcar_conectado(Rol.JUGADOR, notificar=entrar_como_anfitrion)
+
+        async def cancelar(e):
+            sala.desconectar(Rol.JUGADOR)
+            red.cerrar_sala(sala.codigo)
+            await mostrar_red_inicio()
+
+        async def al_desconectar(e):
+            sala.desconectar(Rol.JUGADOR)
+            red.cerrar_sala(sala.codigo)
+
+        ancho_boton = min(300.0, (page.width or 480) - 56)
+        btn_cancelar = boton_menu("CANCELAR", AZUL, cancelar, ancho_boton)
+        btn_cancelar.data = "btn_cancelar_sala"
+
+        contenido = ft.Column(
+            [
+                ft.Text(
+                    "Compartí este código",
+                    size=layout.tamano_texto(20, page.width),
+                    color=BLANCO,
+                    weight=ft.FontWeight.BOLD,
+                ),
+                ft.Text(
+                    sala.codigo,
+                    size=layout.tamano_texto(56, page.width),
+                    weight=ft.FontWeight.BOLD,
+                    color="amber300",
+                    data="codigo_sala",
+                ),
+                ft.Text(
+                    "Esperando al otro jugador...",
+                    size=layout.tamano_texto(16, page.width),
+                    color="white70",
+                    data="espera_sala",
+                ),
+                ft.Container(height=10),
+                ft.ProgressRing(color="amber300"),
+                ft.Container(height=20),
+                btn_cancelar,
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=10,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        fondo = ft.Container(
+            content=ft.Container(content=contenido, expand=True, padding=20),
+            image=ft.DecorationImage(src=FONDO_MENU, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+        )
+        page.add(ft.SafeArea(content=fondo, expand=True))
+        page.on_disconnect = al_desconectar
+        page.update()
+
+    async def mostrar_unirse_sala(e=None):
+        page.clean()
+        page.on_resized = None
+        page.on_disconnect = None
+        page.bgcolor = NEGRO_MENU
+
+        ancho_boton = min(380.0, (page.width or 480) - 56)
+
+        txt_error = ft.Text(
+            "",
+            color="red300",
+            size=layout.tamano_texto(14, page.width),
+            text_align=ft.TextAlign.CENTER,
+            data="error_unirse",
+        )
+        campo_codigo = ft.TextField(
+            label="Código de sala",
+            text_align=ft.TextAlign.CENTER,
+            width=ancho_boton,
+            border_color=BLANCO,
+            color=BLANCO,
+            capitalization=ft.TextCapitalization.CHARACTERS,
+            data="campo_codigo",
+        )
+
+        async def entrar(e):
+            # getattr y no page.client_ip: los Page de mentira de los tests
+            # no lo definen, y sin identificador el límite de intentos
+            # simplemente no se aplica (ver makai/ui/red.py).
+            identificador = getattr(page, "client_ip", None) or ""
+            try:
+                sala = red.unirse(campo_codigo.value or "", identificador=identificador)
+            except red.DemasiadosIntentos:
+                txt_error.value = (
+                    "Demasiados intentos fallidos. Esperá un minuto e intentá de nuevo."
+                )
+                page.update()
+                return
+            except red.SalaInexistente:
+                txt_error.value = "No existe ninguna sala con ese código."
+                page.update()
+                return
+            except red.SalaLlena:
+                txt_error.value = "Esa sala ya tiene dos jugadores."
+                page.update()
+                return
+
+            # Primero se arma la pantalla propia y recién después se avisa al
+            # anfitrión, para que cuando su pantalla reaccione ya encuentre
+            # del otro lado un callback de redibujado (no el de "esperando").
+            await mostrar_juego_red(sala, Rol.PC)
+            await sala.avisar_al_otro(Rol.PC)
+
+        btn_entrar = boton_menu("ENTRAR", ROJO, entrar, ancho_boton)
+        btn_entrar.data = "btn_entrar_sala"
+        btn_volver = boton_menu("VOLVER", AZUL, mostrar_red_inicio, ancho_boton)
+        btn_volver.data = "btn_volver_unirse"
+
+        contenido = ft.Column(
+            [
+                ft.Text(
+                    "Unirme a una sala",
+                    size=layout.tamano_texto(26, page.width),
+                    weight=ft.FontWeight.BOLD,
+                    color=BLANCO,
+                    data="titulo_unirse",
+                ),
+                campo_codigo,
+                txt_error,
+                ft.Container(height=6),
+                btn_entrar,
+                btn_volver,
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=10,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+        fondo = ft.Container(
+            content=ft.Container(content=contenido, expand=True, padding=20),
+            image=ft.DecorationImage(src=FONDO_MENU, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+        )
+        page.add(ft.SafeArea(content=fondo, expand=True))
+        page.update()
+
+    async def mostrar_juego_red(sala: red.Sala, mi_rol: Rol):
+        """Tablero compartido de una partida en red, visto desde `mi_rol`.
+
+        A diferencia de `mostrar_juego`, acá los dos lados los controlan
+        personas reales: no hay estrategia de IA ni animación del lado
+        remoto (ese redibujado, disparado por `sala.avisar_al_otro`, es
+        estático). Es una función separada a propósito, para no meterle
+        ramas de red al modo solitario ya probado.
+        """
+        page.clean()
+        page.bgcolor = MADERA_BASE
+
+        partida = sala.partida
+        otro_rol = mi_rol.rival
+
+        def mano_de(rol: Rol) -> list[Carta]:
+            return partida.mano_jugador if rol is Rol.JUGADOR else partida.mano_pc
+
+        def fichas_de(rol: Rol) -> int:
+            return partida.fichas_jugador if rol is Rol.JUGADOR else partida.fichas_pc
+
+        def es_mi_turno() -> bool:
+            esperado = Estado.TURNO_JUGADOR if mi_rol is Rol.JUGADOR else Estado.TURNO_PC
+            return partida.estado is esperado
+
+        def carta_visual(carta, visible):
+            ancho = layout.ancho_de_carta(page.width)
+            return ft.Image(
+                src=ruta_imagen(carta) if visible and carta is not None else DORSO,
+                width=ancho,
+                height=layout.alto_de_carta(ancho),
+                fit=ft.ImageFit.CONTAIN,
+                border_radius=10,
+            )
+
+        txt_status = ft.Text(
+            TITULO,
+            weight=ft.FontWeight.BOLD,
+            size=layout.tamano_texto(TAMANO_TITULO, page.width),
+            data="estado_red",
+        )
+        txt_fichas = ft.Text(
+            color="yellow",
+            weight=ft.FontWeight.BOLD,
+            size=layout.tamano_texto(TAMANO_MARCADOR, page.width),
+            data="marcador_red",
+        )
+        txt_banca = ft.Text(
+            color="white70",
+            italic=True,
+            size=layout.tamano_texto(14, page.width),
+            data="banca_red",
+        )
+        txt_apuesta = ft.Text(color=BLANCO, data="apuesta_red")
+        row_rival = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=layout.SEPARACION_CARTAS,
+            data="cartas_rival",
+        )
+        row_mio = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=layout.SEPARACION_CARTAS,
+            data="cartas_propias",
+        )
+
+        btn_pedir = ft.Button("PEDIR", disabled=True, data="btn_pedir_red")
+        btn_plantarse = ft.Button("PLANTARSE", disabled=True, data="btn_plantarse_red")
+        btn_repartir = ft.Button(
+            "REPARTIR", bgcolor="orange800", color="white", disabled=True, data="btn_repartir_red"
+        )
+        btn_menu = ft.Button("MENÚ", data="btn_menu_red")
+        btn_apuesta_menos = ft.IconButton(
+            icon=ft.Icons.REMOVE, icon_color="white", disabled=True, data="apuesta_menos_red"
+        )
+        btn_apuesta_mas = ft.IconButton(
+            icon=ft.Icons.ADD, icon_color="white", disabled=True, data="apuesta_mas_red"
+        )
+
+        #: Último estado dibujado, para disparar los sonidos de reparto y
+        #: victoria una sola vez por evento (en las dos pantallas) en vez de
+        #: en cada redibujado mientras el estado no cambia.
+        estado_previo = None
+        estados_de_cierre = (Estado.RONDA_TERMINADA, Estado.PARTIDA_TERMINADA)
+
+        def dibujar():
+            nonlocal estado_previo
+            revelar = partida.estado in estados_de_cierre
+            if estado_previo is Estado.ESPERANDO_REPARTO and partida.estado is Estado.TURNO_JUGADOR:
+                audio.sonar_barajeo()
+            if revelar and estado_previo not in estados_de_cierre and partida.banca is mi_rol:
+                # La banca pasa a quien acaba de ganar la ronda (ver
+                # `siguiente_banca` en makai/core/reglas.py): leerla acá
+                # evita necesitar el `ResultadoRonda`, que solo calcula
+                # quien resuelve la ronda.
+                audio.sonar_victoria()
+            estado_previo = partida.estado
+
+            row_mio.controls = [carta_visual(c, True) for c in mano_de(mi_rol)]
+            row_rival.controls = [carta_visual(c, revelar) for c in mano_de(otro_rol)]
+
+            txt_fichas.value = f"Vos {fichas_de(mi_rol)} 🪙  ·  {fichas_de(otro_rol)} 🪙 rival"
+            txt_banca.value = (
+                "🏛 Sos la banca" if partida.banca is mi_rol else "🏛 La banca es tu rival"
+            )
+
+            if partida.estado is Estado.ESPERANDO_REPARTO:
+                txt_status.value = (
+                    "Cuando quieras, repartí"
+                    if mi_rol is Rol.JUGADOR
+                    else "Esperando el reparto..."
+                )
+            elif partida.estado is Estado.PARTIDA_TERMINADA:
+                txt_status.value = (
+                    "🏆 ¡GANASTE LA PARTIDA!"
+                    if fichas_de(mi_rol) > 0
+                    else "😢 Te quedaste sin fichas"
+                )
+            elif partida.estado is Estado.RONDA_TERMINADA:
+                txt_status.value = (
+                    f"Puntajes — Vos: {calcular_puntaje(mano_de(mi_rol))}"
+                    f" · Rival: {calcular_puntaje(mano_de(otro_rol))}"
+                )
+            elif es_mi_turno():
+                txt_status.value = "Te toca: ¿pedís o te plantás?"
+            else:
+                txt_status.value = "Turno del otro jugador..."
+
+            btn_pedir.disabled = not (es_mi_turno() and len(mano_de(mi_rol)) < MAX_CARTAS_POR_MANO)
+            btn_plantarse.disabled = not es_mi_turno()
+            btn_repartir.disabled = not (
+                partida.estado is Estado.ESPERANDO_REPARTO and mi_rol is Rol.JUGADOR
+            )
+
+            # La apuesta la fija el anfitrión antes de repartir: dejar que
+            # los dos la toquen a la vez abriría una carrera entre acciones
+            # que no están atadas a un turno (a diferencia de pedir/plantarse).
+            txt_apuesta.value = f"Apuesta: {partida.apuesta} 🪙"
+            puede_apostar = partida.estado is Estado.ESPERANDO_REPARTO and mi_rol is Rol.JUGADOR
+            btn_apuesta_menos.disabled = not puede_apostar or partida.apuesta <= 1
+            btn_apuesta_mas.disabled = (
+                not puede_apostar or partida.apuesta >= partida.apuesta_maxima
+            )
+            page.update()
+
+        async def notificar_redibujo():
+            dibujar()
+
+        async def cambiar_apuesta(delta):
+            if not (partida.estado is Estado.ESPERANDO_REPARTO and mi_rol is Rol.JUGADOR):
+                return
+            objetivo = max(1, min(partida.apuesta + delta, partida.apuesta_maxima))
+            partida.apostar(objetivo)
+            dibujar()
+            await sala.avisar_al_otro(mi_rol)
+
+        async def subir_apuesta(e):
+            await cambiar_apuesta(PASO_APUESTA)
+
+        async def bajar_apuesta(e):
+            await cambiar_apuesta(-PASO_APUESTA)
+
+        async def repartir(e):
+            if not (partida.estado is Estado.ESPERANDO_REPARTO and mi_rol is Rol.JUGADOR):
+                return
+            partida.repartir()
+            dibujar()
+            await sala.avisar_al_otro(mi_rol)
+
+        async def pedir(e):
+            if not (es_mi_turno() and len(mano_de(mi_rol)) < MAX_CARTAS_POR_MANO):
+                return
+            if mi_rol is Rol.JUGADOR:
+                partida.pedir()
+            else:
+                partida.pedir_pc()
+            dibujar()
+            await sala.avisar_al_otro(mi_rol)
+
+        async def plantarse(e):
+            if not es_mi_turno():
+                return
+
+            if mi_rol is Rol.JUGADOR:
+                # Solo pasa el turno: el que cierra la ronda es siempre
+                # quien ocupa Rol.PC (ver más abajo), para que nunca haya
+                # dos lados tratando de resolverla o avanzar de ronda a la
+                # vez.
+                partida.plantarse()
+                dibujar()
+                await sala.avisar_al_otro(mi_rol)
+                return
+
+            ronda = partida.resolver_ronda()
+            dibujar()
+            await sala.avisar_al_otro(mi_rol)
+            await asyncio.sleep(1.5)
+
+            if not ronda.partida_terminada:
+                partida.nueva_ronda()
+            dibujar()
+            await sala.avisar_al_otro(mi_rol)
+
+        async def volver_al_menu(e):
+            sala.desconectar(mi_rol)
+            red.cerrar_sala(sala.codigo)
+            await mostrar_inicio()
+
+        async def al_desconectar(e):
+            sala.desconectar(mi_rol)
+
+        btn_repartir.on_click = repartir
+        btn_pedir.on_click = pedir
+        btn_plantarse.on_click = plantarse
+        btn_menu.on_click = volver_al_menu
+        btn_apuesta_menos.on_click = bajar_apuesta
+        btn_apuesta_mas.on_click = subir_apuesta
+
+        sala.marcar_conectado(mi_rol, notificar=notificar_redibujo)
+        page.on_disconnect = al_desconectar
+
+        contenido = ft.Column(
+            [
+                ft.Row(
+                    [txt_fichas, btn_menu],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                txt_banca,
+                ft.Container(
+                    content=txt_status,
+                    padding=10,
+                    border_radius=12,
+                    bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
+                ),
+                ft.Text("RIVAL", color=BLANCO, weight=ft.FontWeight.BOLD, size=13),
+                row_rival,
+                ft.Divider(height=30),
+                row_mio,
+                ft.Text("VOS", color=BLANCO, weight=ft.FontWeight.BOLD, size=13),
+                ft.Row(
+                    [btn_apuesta_menos, txt_apuesta, btn_apuesta_mas],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=4,
+                ),
+                ft.Row(
+                    [btn_pedir, btn_plantarse, btn_repartir],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    wrap=True,
+                    spacing=8,
+                ),
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+        mesa = ft.Container(
+            content=contenido,
+            image=ft.DecorationImage(src=MESA_MADERA, repeat=ft.ImageRepeat.REPEAT),
+            expand=True,
+            alignment=ft.alignment.center,
+            padding=14,
+        )
+        page.add(ft.SafeArea(content=mesa, expand=True))
+        dibujar()
+        audio.registrar()
+        audio.iniciar_musica()
+
     # Pantalla de reglas
     async def mostrar_reglas(e=None):
         page.clean()
@@ -1052,4 +1544,13 @@ async def main(page: ft.Page):
 
 # Ejecución
 if __name__ == "__main__":
+    # `python main.py --servidor` levanta el juego como servidor web en la
+    # red local en vez de la ventana de escritorio de siempre, para que
+    # otros dispositivos de la misma WiFi se conecten a "JUGAR EN RED" desde
+    # el navegador (http://<IP-de-esta-PC>:8550). El modo por defecto
+    # (`python main.py`, sin el flag) no cambia en nada.
+    if "--servidor" in sys.argv:
+        os.environ.setdefault("FLET_SERVER_PORT", "8550")
+        os.environ.setdefault("FLET_SERVER_IP", "0.0.0.0")
+        os.environ["FLET_FORCE_WEB_SERVER"] = "true"
     ft.app(target=main, assets_dir=ASSETS_DIR)
